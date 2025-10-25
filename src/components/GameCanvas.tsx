@@ -123,6 +123,7 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
         if (alivePlayers.length === 1) {
           const winnerPlayer = alivePlayers[0];
           setWinner(winnerPlayer.id);
+          onGameEnd(winnerPlayer.id);
           toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
             description: 'Congratulations on your victory!',
             duration: 5000,
