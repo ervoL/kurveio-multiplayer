@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import type { GameConfig, Player, Keys } from '@/lib/types';
+import type { GameConfig, Player, Keys, TouchControl } from '@/lib/types';
 import {
   createPlayer,
   checkCollision,
@@ -9,6 +9,8 @@ import {
   TURN_SPEED,
   TRAIL_WIDTH,
   GAP_LENGTH,
+  getTouchControlsForPlayer,
+  isTouchDevice,
 } from '@/lib/game';
 
 interface GameCanvasProps {
@@ -26,6 +28,8 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
   const [showRestart, setShowRestart] = useState(false);
   const [winner, setWinner] = useState<number | null>(null);
   const gameLoopRef = useRef<(() => void) | null>(null);
+  const touchControlsRef = useRef<TouchControl[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
 
   const startNewGame = () => {
     setShowRestart(false);
@@ -39,6 +43,34 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
     playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
       createPlayer(i, canvas.width, canvas.height)
     );
+
+    // Reinitialize touch controls
+    if (isMobile) {
+      const controlSize = 60;
+      touchControlsRef.current = [];
+      
+      for (let i = 0; i < config.playerCount; i++) {
+        const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
+        
+        touchControlsRef.current.push({
+          playerId: i,
+          side: 'left',
+          x: positions.leftX,
+          y: positions.leftY,
+          radius: controlSize / 2,
+          active: false,
+        });
+        
+        touchControlsRef.current.push({
+          playerId: i,
+          side: 'right',
+          x: positions.rightX,
+          y: positions.rightY,
+          radius: controlSize / 2,
+          active: false,
+        });
+      }
+    }
 
     const now = Date.now();
     playersRef.current.forEach((player) => {
@@ -66,9 +98,40 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
+    const touchEnabled = isTouchDevice();
+    setIsMobile(touchEnabled);
+
     playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
       createPlayer(i, canvas.width, canvas.height)
     );
+
+    // Initialize touch controls for mobile
+    if (touchEnabled) {
+      const controlSize = 60;
+      touchControlsRef.current = [];
+      
+      for (let i = 0; i < config.playerCount; i++) {
+        const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
+        
+        touchControlsRef.current.push({
+          playerId: i,
+          side: 'left',
+          x: positions.leftX,
+          y: positions.leftY,
+          radius: controlSize / 2,
+          active: false,
+        });
+        
+        touchControlsRef.current.push({
+          playerId: i,
+          side: 'right',
+          x: positions.rightX,
+          y: positions.rightY,
+          radius: controlSize / 2,
+          active: false,
+        });
+      }
+    }
 
     const now = Date.now();
     playersRef.current.forEach((player) => {
@@ -107,11 +170,60 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
       e.preventDefault();
     };
 
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      Array.from(e.touches).forEach((touch) => {
+        const touchX = touch.clientX;
+        const touchY = touch.clientY;
+        
+        touchControlsRef.current.forEach((control) => {
+          const distance = Math.sqrt(
+            Math.pow(touchX - control.x, 2) + Math.pow(touchY - control.y, 2)
+          );
+          
+          if (distance <= control.radius * 1.5) {
+            control.active = true;
+            const player = playersRef.current[control.playerId];
+            if (player) {
+              if (control.side === 'left') {
+                player.touchLeftActive = true;
+              } else {
+                player.touchRightActive = true;
+              }
+            }
+          }
+        });
+      });
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      touchControlsRef.current.forEach((control) => {
+        control.active = false;
+        const player = playersRef.current[control.playerId];
+        if (player) {
+          if (control.side === 'left') {
+            player.touchLeftActive = false;
+          } else {
+            player.touchRightActive = false;
+          }
+        }
+      });
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mouseup', handleMouseUp);
     canvas.addEventListener('contextmenu', handleContextMenu);
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
 
     const gameLoop = () => {
       if (!canvas || !ctx) return;
@@ -148,6 +260,13 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
             player.angle -= TURN_SPEED;
           }
           if (mouseButtonsRef.current.right) {
+            player.angle += TURN_SPEED;
+          }
+        } else if (player.controlType === 'touch') {
+          if (player.touchLeftActive) {
+            player.angle -= TURN_SPEED;
+          }
+          if (player.touchRightActive) {
             player.angle += TURN_SPEED;
           }
         }
@@ -239,6 +358,30 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
         }
       });
 
+      // Draw touch controls for mobile
+      if (touchEnabled) {
+        touchControlsRef.current.forEach((control) => {
+          const player = playersRef.current[control.playerId];
+          if (!player) return;
+
+          // Draw semi-transparent control circle with fill
+          ctx.globalAlpha = control.active ? 0.4 : 0.2; // 40% when active, 20% when inactive
+          ctx.fillStyle = player.color;
+          ctx.beginPath();
+          ctx.arc(control.x, control.y, control.radius, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Draw border with slightly higher opacity
+          ctx.globalAlpha = 0.5; // 50% opacity for border
+          ctx.strokeStyle = player.color;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          
+          // Reset alpha
+          ctx.globalAlpha = 1.0;
+        });
+      }
+
       animationRef.current = requestAnimationFrame(gameLoop);
     };
 
@@ -251,6 +394,10 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
       canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mouseup', handleMouseUp);
       canvas.removeEventListener('contextmenu', handleContextMenu);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchcancel', handleTouchEnd);
+      canvas.removeEventListener('touchmove', handleTouchMove);
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }

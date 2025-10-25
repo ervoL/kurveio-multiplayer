@@ -15,10 +15,12 @@ export interface Player {
   trail: Point[];
   turnLeft: string;
   turnRight: string;
-  controlType: 'keyboard' | 'mouse';
+  controlType: 'keyboard' | 'mouse' | 'touch';
   nextGapTime: number;
   gapActive: boolean;
   gapEndTime: number;
+  touchLeftActive?: boolean;
+  touchRightActive?: boolean;
 }
 
 export interface Point {
@@ -29,4 +31,13 @@ export interface Point {
 
 export interface Keys {
   [key: string]: boolean;
+}
+
+export interface TouchControl {
+  playerId: number;
+  side: 'left' | 'right';
+  x: number;
+  y: number;
+  radius: number;
+  active: boolean;
 }

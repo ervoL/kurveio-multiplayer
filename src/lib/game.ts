@@ -14,12 +14,64 @@ export const PLAYER_CONTROLS = [
   { turnLeft: 'mouse-left', turnRight: 'mouse-right', controlType: 'mouse' as const },
 ];
 
+// Check if device has touch capability
+export const isTouchDevice = () => {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+};
+
+// Generate touch controls for mobile
+export const getTouchControlsForPlayer = (playerId: number, canvasWidth: number, canvasHeight: number) => {
+  const controlSize = 60;
+  const padding = 40;
+  const sideOffset = 80; // Distance from edge
+  
+  // Position controls based on where each player starts
+  // Player 0: starts left side -> controls on left side (vertical center)
+  // Player 1: starts right side -> controls on right side (vertical center)
+  // Player 2: starts top -> controls on top (horizontal center)
+  // Player 3: starts bottom -> controls on bottom (horizontal center)
+  
+  const positions = [
+    // Player 1: starts from left, controls on left side vertically centered
+    { 
+      leftX: padding + controlSize, 
+      leftY: canvasHeight / 2 - controlSize - 20, 
+      rightX: padding + controlSize, 
+      rightY: canvasHeight / 2 + controlSize + 20 
+    },
+    // Player 2: starts from right, controls on right side vertically centered
+    { 
+      leftX: canvasWidth - padding - controlSize, 
+      leftY: canvasHeight / 2 - controlSize - 20, 
+      rightX: canvasWidth - padding - controlSize, 
+      rightY: canvasHeight / 2 + controlSize + 20 
+    },
+    // Player 3: starts from top, controls on top horizontally centered
+    { 
+      leftX: canvasWidth / 2 - controlSize * 2 - 20, 
+      leftY: padding + controlSize, 
+      rightX: canvasWidth / 2 + controlSize * 2 + 20, 
+      rightY: padding + controlSize 
+    },
+    // Player 4: starts from bottom, controls on bottom horizontally centered
+    { 
+      leftX: canvasWidth / 2 - controlSize * 2 - 20, 
+      leftY: canvasHeight - padding - controlSize, 
+      rightX: canvasWidth / 2 + controlSize * 2 + 20, 
+      rightY: canvasHeight - padding - controlSize 
+    },
+  ];
+  
+  return positions[playerId] || positions[0];
+};
+
 export const TURN_SPEED = 0.08;
 export const TRAIL_WIDTH = 3;
 export const GAP_LENGTH = 15;
 export const SPAWN_PADDING = 100;
 
 export function createPlayer(id: number, canvasWidth: number, canvasHeight: number): Player {
+  const isMobile = isTouchDevice();
   const controls = PLAYER_CONTROLS[id];
   const spawnPositions = [
     { x: SPAWN_PADDING, y: canvasHeight / 2, angle: 0 },
@@ -40,10 +92,12 @@ export function createPlayer(id: number, canvasWidth: number, canvasHeight: numb
     trail: [],
     turnLeft: controls.turnLeft,
     turnRight: controls.turnRight,
-    controlType: controls.controlType,
+    controlType: isMobile ? 'touch' : controls.controlType,
     nextGapTime: 0,
     gapActive: false,
     gapEndTime: 0,
+    touchLeftActive: false,
+    touchRightActive: false,
   };
 }
 
