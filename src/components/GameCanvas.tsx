@@ -9,6 +9,7 @@ import {
   TURN_SPEED,
   TRAIL_WIDTH,
   GAP_LENGTH,
+  SPAWN_PADDING,
   getTouchControlsForPlayer,
   isTouchDevice,
 } from '@/lib/game';
@@ -17,9 +18,10 @@ import { AudioManager } from '@/lib/audio';
 interface GameCanvasProps {
   config: GameConfig;
   onGameEnd: (winnerId?: number) => void;
+  onBackToMenu: () => void;
 }
 
-export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
+export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playersRef = useRef<Player[]>([]);
   const keysRef = useRef<Keys>({});
@@ -233,7 +235,9 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
       const now = Date.now();
       const alivePlayers = playersRef.current.filter((p) => p.alive);
 
-      if (alivePlayers.length <= 1) {
+      // For multiplayer: game ends when 1 or fewer players remain
+      // For single player: game never ends, player respawns after crash
+      if (config.playerCount > 1 && alivePlayers.length <= 1) {
         // Stop heartbeat when game ends
         audioManagerRef.current?.stopHeartbeat();
         
@@ -302,15 +306,32 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
         // Check collision after adding the trail point
         if (!player.gapActive) {
           if (checkCollision(player.x, player.y, playersRef.current, player.id)) {
-            player.alive = false;
-            // Add one final trail point to ensure no gap where the snake died
-            player.trail.push({
-              x: player.x,
-              y: player.y,
-              isGap: false,
-            });
             // Play crash sound
             audioManagerRef.current?.playCrash();
+            
+            // In single player mode, respawn the player
+            if (config.playerCount === 1) {
+              // Clear the trail
+              player.trail = [];
+              // Reset position to starting point
+              const spawn = { x: SPAWN_PADDING, y: canvas.height / 2, angle: 0 };
+              player.x = spawn.x;
+              player.y = spawn.y;
+              player.angle = spawn.angle;
+              player.alive = true;
+              // Reset gap timing
+              player.nextGapTime = now + Math.random() * config.gapInterval;
+              player.gapActive = false;
+            } else {
+              // In multiplayer mode, mark player as dead
+              player.alive = false;
+              // Add one final trail point to ensure no gap where the snake died
+              player.trail.push({
+                x: player.x,
+                y: player.y,
+                isGap: false,
+              });
+            }
           }
         }
       });
@@ -424,18 +445,48 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
     };
   }, [config]);
 
+  // Handle keyboard shortcuts for game end screen
+  useEffect(() => {
+    if (!showRestart) return;
+
+    const handleGameEndKeys = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        startNewGame();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onBackToMenu();
+      }
+    };
+
+    window.addEventListener('keydown', handleGameEndKeys);
+    return () => {
+      window.removeEventListener('keydown', handleGameEndKeys);
+    };
+  }, [showRestart]);
+
   return (
     <>
       <canvas ref={canvasRef} className="block" />
       {showRestart && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
-          <div className="pointer-events-auto">
+          <div className="pointer-events-auto flex flex-col gap-4 items-center">
             <Button
               onClick={startNewGame}
               size="lg"
-              className="text-lg h-14 px-8"
+              className="text-lg h-14 px-8 min-w-[240px]"
             >
               Play Again
+              <span className="ml-3 text-sm opacity-70">(Enter)</span>
+            </Button>
+            <Button
+              onClick={onBackToMenu}
+              variant="outline"
+              size="lg"
+              className="text-lg h-14 px-8 min-w-[240px]"
+            >
+              Main Menu
+              <span className="ml-3 text-sm opacity-70">(Esc)</span>
             </Button>
           </div>
         </div>

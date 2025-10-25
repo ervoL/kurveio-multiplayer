@@ -25,12 +25,17 @@ function App() {
     }
   };
 
+  const handleBackToMenu = () => {
+    setGameState('config');
+    setScores([0, 0, 0, 0]); // Reset scores when going back to menu
+  };
+
   return (
     <>
       {gameState === 'config' && <ConfigScreen onStartGame={handleStartGame} />}
       {gameState === 'playing' && config && (
         <>
-          <GameCanvas config={config} onGameEnd={handleGameEnd} />
+          <GameCanvas config={config} onGameEnd={handleGameEnd} onBackToMenu={handleBackToMenu} />
           <Scoreboard scores={scores} playerCount={config.playerCount} />
         </>
       )}

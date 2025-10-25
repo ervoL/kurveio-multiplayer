@@ -22,7 +22,7 @@ export const isTouchDevice = () => {
 // Generate touch controls for mobile
 export const getTouchControlsForPlayer = (playerId: number, canvasWidth: number, canvasHeight: number) => {
   const controlSize = 60;
-  const padding = 40;
+  const padding = 0; // Minimal padding from screen edge
   const sideOffset = 80; // Distance from edge
   
   // Position controls based on where each player starts
@@ -49,17 +49,17 @@ export const getTouchControlsForPlayer = (playerId: number, canvasWidth: number,
     // Player 3: starts from top moving down, controls on top horizontally centered
     // When moving down, left turn goes to the right side of screen, so swap positions
     { 
-      leftX: canvasWidth / 2 + controlSize * 2 + 20,  // Swapped: left control on right side
+      leftX: canvasWidth / 2 + controlSize + 20,  // Swapped: left control on right side
       leftY: padding + controlSize, 
-      rightX: canvasWidth / 2 - controlSize * 2 - 20,  // Swapped: right control on left side
+      rightX: canvasWidth / 2 - controlSize - 20,  // Swapped: right control on left side
       rightY: padding + controlSize 
     },
     // Player 4: starts from bottom moving up, controls on bottom horizontally centered
     // When moving up, left turn goes to the left side of screen, so normal order
     { 
-      leftX: canvasWidth / 2 - controlSize * 2 - 20, 
+      leftX: canvasWidth / 2 - controlSize - 20, 
       leftY: canvasHeight - padding - controlSize, 
-      rightX: canvasWidth / 2 + controlSize * 2 + 20, 
+      rightX: canvasWidth / 2 + controlSize + 20, 
       rightY: canvasHeight - padding - controlSize 
     },
   ];

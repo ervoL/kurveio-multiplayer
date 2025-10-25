@@ -17,8 +17,8 @@ export function Scoreboard({ scores, playerCount }: ScoreboardProps) {
   const maxScore = Math.max(...scores);
 
   return (
-    <Card className="fixed top-4 right-4 p-4 min-w-[200px] backdrop-blur-sm bg-card/80">
-      <div className="flex items-center gap-2 mb-3">
+    <Card className="fixed top-4 right-4 p-4 min-w-[200px] bg-transparent border-transparent backdrop-blur-none shadow-none pointer-events-none">
+      <div className="flex items-center gap-2 mb-3 opacity-70">
         <Trophy weight="fill" className="text-accent" size={20} />
         <h2 className="text-sm font-bold tracking-wide">SCOREBOARD</h2>
       </div>
@@ -26,7 +26,7 @@ export function Scoreboard({ scores, playerCount }: ScoreboardProps) {
         {Array.from({ length: playerCount }).map((_, i) => (
           <div
             key={i}
-            className="flex items-center justify-between gap-3"
+            className="flex items-center justify-between gap-3 opacity-70"
           >
             <div className="flex items-center gap-2">
               <div
