@@ -14,14 +14,12 @@ interface ConfigScreenProps {
 export function ConfigScreen({ onStartGame }: ConfigScreenProps) {
   const [playerCount, setPlayerCount] = useState(2);
   const [speed, setSpeed] = useState(2);
-  const [growthInterval, setGrowthInterval] = useState(1000);
   const [gapInterval, setGapInterval] = useState(3000);
 
   const handleStart = () => {
     onStartGame({
       playerCount,
       speed,
-      growthInterval,
       gapInterval,
     });
   };
@@ -71,25 +69,6 @@ export function ConfigScreen({ onStartGame }: ConfigScreenProps) {
               step={0.5}
               value={[speed]}
               onValueChange={(v) => setSpeed(v[0])}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex justify-between items-baseline">
-              <Label htmlFor="growth" className="text-base">
-                Growth Interval
-              </Label>
-              <span className="text-sm text-muted-foreground">
-                {(growthInterval / 1000).toFixed(1)}s
-              </span>
-            </div>
-            <Slider
-              id="growth"
-              min={500}
-              max={3000}
-              step={100}
-              value={[growthInterval]}
-              onValueChange={(v) => setGrowthInterval(v[0])}
             />
           </div>
 

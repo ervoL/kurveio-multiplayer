@@ -1,7 +1,6 @@
 export interface GameConfig {
   playerCount: number;
   speed: number;
-  growthInterval: number;
   gapInterval: number;
 }
 

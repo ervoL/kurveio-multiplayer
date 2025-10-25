@@ -25,7 +25,6 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
   const keysRef = useRef<Keys>({});
   const mouseButtonsRef = useRef({ left: false, right: false });
   const animationRef = useRef<number>(0);
-  const lastGrowthRef = useRef<number>(0);
   const [showRestart, setShowRestart] = useState(false);
   const [winner, setWinner] = useState<number | null>(null);
   const gameLoopRef = useRef<(() => void) | null>(null);
@@ -78,8 +77,6 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
     playersRef.current.forEach((player) => {
       player.nextGapTime = now + Math.random() * config.gapInterval;
     });
-
-    lastGrowthRef.current = now;
 
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
@@ -144,8 +141,6 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
     playersRef.current.forEach((player) => {
       player.nextGapTime = now + Math.random() * config.gapInterval;
     });
-
-    lastGrowthRef.current = now;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.key] = true;
