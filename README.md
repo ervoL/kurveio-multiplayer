@@ -1,23 +1,70 @@
-# ✨ Welcome to Your Spark Template!
-You've just launched your brand-new Spark Template Codespace — everything’s fired up and ready for you to explore, build, and create with Spark!
+# 🎮 Kurve.io - Multiplayer Snake Arena# 
 
-This template is your blank canvas. It comes with a minimal setup to help you get started quickly with Spark development.
+A recreation of the classic local multiplayer snake game, built entirely using **GitHub Spark** and **GitHub Copilot**.
 
-🚀 What's Inside?
-- A clean, minimal Spark environment
+
+
+## 🌟 About This Project
+
+
+This is a test project that brings back the nostalgic fun of old-school multiplayer snake-like game where players compete on the same keyboard.
+
+
+**🤖 Built 100% with AI:**## 🌟 About This Project
+
+- Designed and developed using **GitHub Spark**
+
+- Code assistance and refinements by **GitHub Copilot**🚀
+
+This is a test project that brings back the nostalgic fun of old-school multiplayer snake games where players compete on the same keyboard. It's a modern take on a classic game, showcasing what's possible when AI tools handle the heavy lifting of development.- A clean, minimal Spark environment
+
+## 🎯 Features
+
 - Pre-configured for local development
-- Ready to scale with your ideas
-  
-🧠 What Can You Do?
 
-Right now, this is just a starting point — the perfect place to begin building and testing your Spark applications.
+- **Local Multiplayer** - Gather your friends around one keyboard
 
-🧹 Just Exploring?
-No problem! If you were just checking things out and don’t need to keep this code:
+- **Classic Gameplay** - Simple, addictive, and fun
 
-- Simply delete your Spark.
-- Everything will be cleaned up — no traces left behind.
+- **Modern Tech Stack** - Built with React, TypeScript, and Vite
 
-📄 License For Spark Template Resources 
+- **Responsive Design** - Styled with Tailwind CSS- Designed and developed using **GitHub Spark**  
 
-The Spark Template files and resources from GitHub are licensed under the terms of the MIT license, Copyright GitHub, Inc.
+
+
+## 🚀 Play Online
+
+
+
+The game is live and playable on [GitHub Pages](https://ervol.github.io/kurveio-multiplayer/)
+
+
+
+## 💻 Development
+
+This project uses:
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS
+- GitHub Spark & Copilot
+
+### Local Setup
+
+```bash
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+## 📝 License
+
+MIT license
