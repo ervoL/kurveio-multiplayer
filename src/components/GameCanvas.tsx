@@ -136,6 +136,20 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
             continue;
           }
 
+          if (i > 0) {
+            const prevPoint = player.trail[i - 1];
+            const dx = Math.abs(point.x - prevPoint.x);
+            const dy = Math.abs(point.y - prevPoint.y);
+            const maxJump = config.speed * 2;
+
+            if (dx > maxJump || dy > maxJump) {
+              if (drawing) {
+                ctx.stroke();
+                drawing = false;
+              }
+            }
+          }
+
           if (!drawing) {
             ctx.beginPath();
             ctx.moveTo(point.x, point.y);
