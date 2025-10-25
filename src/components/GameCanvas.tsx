@@ -12,6 +12,7 @@ import {
   getTouchControlsForPlayer,
   isTouchDevice,
 } from '@/lib/game';
+import { AudioManager } from '@/lib/audio';
 
 interface GameCanvasProps {
   config: GameConfig;
@@ -30,6 +31,7 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
   const gameLoopRef = useRef<(() => void) | null>(null);
   const touchControlsRef = useRef<TouchControl[]>([]);
   const [isMobile, setIsMobile] = useState(false);
+  const audioManagerRef = useRef<AudioManager | null>(null);
 
   const startNewGame = () => {
     setShowRestart(false);
@@ -100,6 +102,11 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
 
     const touchEnabled = isTouchDevice();
     setIsMobile(touchEnabled);
+
+    // Initialize audio manager
+    if (!audioManagerRef.current) {
+      audioManagerRef.current = new AudioManager();
+    }
 
     playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
       createPlayer(i, canvas.width, canvas.height)
@@ -232,6 +239,9 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
       const alivePlayers = playersRef.current.filter((p) => p.alive);
 
       if (alivePlayers.length <= 1) {
+        // Stop heartbeat when game ends
+        audioManagerRef.current?.stopHeartbeat();
+        
         if (alivePlayers.length === 1) {
           const winnerPlayer = alivePlayers[0];
           setWinner(winnerPlayer.id);
@@ -304,9 +314,14 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
               y: player.y,
               isGap: false,
             });
+            // Play crash sound
+            audioManagerRef.current?.playCrash();
           }
         }
       });
+
+      // Update heartbeat based on distance between alive snakes
+      audioManagerRef.current?.updateHeartbeat(playersRef.current);
 
       ctx.fillStyle = 'oklch(0.10 0.05 250)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -409,6 +424,8 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
+      // Clean up audio manager
+      audioManagerRef.current?.destroy();
     };
   }, [config]);
 

@@ -107,6 +107,8 @@ export function checkCollision(
   players: Player[],
   currentPlayerId: number
 ): boolean {
+  const maxSegmentLength = 20; // Maximum valid segment length (to detect wraps)
+  
   for (const player of players) {
     // Check all trail points except the very recent ones of the current player
     const skipCount = player.id === currentPlayerId ? 15 : 5;
@@ -130,6 +132,17 @@ export function checkCollision(
       // Also check line segment collision for consecutive points
       if (i > 0 && !player.trail[i - 1].isGap) {
         const prevPoint = player.trail[i - 1];
+        
+        // Calculate segment length to detect screen wraps
+        const segmentLength = Math.sqrt(
+          Math.pow(point.x - prevPoint.x, 2) + Math.pow(point.y - prevPoint.y, 2)
+        );
+        
+        // Skip this segment if it's too long (indicates a screen wrap)
+        if (segmentLength > maxSegmentLength) {
+          continue;
+        }
+        
         const segmentDist = pointToLineDistance(x, y, prevPoint.x, prevPoint.y, point.x, point.y);
         
         if (segmentDist < TRAIL_WIDTH * 2) {
