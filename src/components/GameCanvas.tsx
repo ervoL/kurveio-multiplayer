@@ -287,15 +287,23 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
           player.gapActive = false;
         }
 
+        // Always add trail point (even for collision check before dying)
         player.trail.push({
           x: player.x,
           y: player.y,
           isGap: player.gapActive,
         });
 
+        // Check collision after adding the trail point
         if (!player.gapActive) {
           if (checkCollision(player.x, player.y, playersRef.current, player.id)) {
             player.alive = false;
+            // Add one final trail point to ensure no gap where the snake died
+            player.trail.push({
+              x: player.x,
+              y: player.y,
+              isGap: false,
+            });
           }
         }
       });

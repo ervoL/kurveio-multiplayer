@@ -108,26 +108,77 @@ export function checkCollision(
   currentPlayerId: number
 ): boolean {
   for (const player of players) {
-    for (let i = 0; i < player.trail.length - 5; i++) {
+    // Check all trail points except the very recent ones of the current player
+    const skipCount = player.id === currentPlayerId ? 15 : 5;
+    
+    for (let i = 0; i < player.trail.length - skipCount; i++) {
       const point = player.trail[i];
       
+      // Skip gap points
       if (point.isGap) continue;
       
-      if (player.id === currentPlayerId && i >= player.trail.length - 10) {
-        continue;
-      }
-      
+      // Calculate distance from current position to trail point
       const distance = Math.sqrt(
         Math.pow(x - point.x, 2) + Math.pow(y - point.y, 2)
       );
       
+      // Collision if within trail width
       if (distance < TRAIL_WIDTH * 2) {
         return true;
+      }
+      
+      // Also check line segment collision for consecutive points
+      if (i > 0 && !player.trail[i - 1].isGap) {
+        const prevPoint = player.trail[i - 1];
+        const segmentDist = pointToLineDistance(x, y, prevPoint.x, prevPoint.y, point.x, point.y);
+        
+        if (segmentDist < TRAIL_WIDTH * 2) {
+          return true;
+        }
       }
     }
   }
   
   return false;
+}
+
+// Helper function to calculate distance from a point to a line segment
+function pointToLineDistance(
+  px: number, py: number,
+  x1: number, y1: number,
+  x2: number, y2: number
+): number {
+  const A = px - x1;
+  const B = py - y1;
+  const C = x2 - x1;
+  const D = y2 - y1;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  
+  if (lenSq === 0) {
+    return Math.sqrt(A * A + B * B);
+  }
+  
+  const param = dot / lenSq;
+
+  let xx, yy;
+
+  if (param < 0) {
+    xx = x1;
+    yy = y1;
+  } else if (param > 1) {
+    xx = x2;
+    yy = y2;
+  } else {
+    xx = x1 + param * C;
+    yy = y1 + param * D;
+  }
+
+  const dx = px - xx;
+  const dy = py - yy;
+  
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 export function wrapPosition(pos: number, max: number): number {
