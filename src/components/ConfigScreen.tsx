@@ -52,6 +52,7 @@ export function ConfigScreen({ onStartGame }: ConfigScreenProps) {
                 <SelectItem value="1">1 Player</SelectItem>
                 <SelectItem value="2">2 Players</SelectItem>
                 <SelectItem value="3">3 Players</SelectItem>
+                <SelectItem value="4">4 Players</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -123,7 +124,8 @@ export function ConfigScreen({ onStartGame }: ConfigScreenProps) {
           </Button>
 
           <div className="text-xs text-muted-foreground space-y-1 text-center tracking-wide">
-            <p>Player 1: A / D • Player 2: J / L • Player 3: ← / →</p>
+            <p>Player 1: A / D • Player 2: J / L</p>
+            <p>Player 3: ← / → • Player 4: Left / Right Click</p>
           </div>
         </div>
       </Card>

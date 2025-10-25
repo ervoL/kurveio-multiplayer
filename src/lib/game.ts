@@ -4,12 +4,14 @@ export const PLAYER_COLORS = [
   'oklch(0.65 0.25 25)',
   'oklch(0.70 0.20 145)', 
   'oklch(0.65 0.20 240)',
+  'oklch(0.75 0.18 70)',
 ];
 
 export const PLAYER_CONTROLS = [
-  { turnLeft: 'a', turnRight: 'd' },
-  { turnLeft: 'j', turnRight: 'l' },
-  { turnLeft: 'ArrowLeft', turnRight: 'ArrowRight' },
+  { turnLeft: 'a', turnRight: 'd', controlType: 'keyboard' as const },
+  { turnLeft: 'j', turnRight: 'l', controlType: 'keyboard' as const },
+  { turnLeft: 'ArrowLeft', turnRight: 'ArrowRight', controlType: 'keyboard' as const },
+  { turnLeft: 'mouse-left', turnRight: 'mouse-right', controlType: 'mouse' as const },
 ];
 
 export const TURN_SPEED = 0.08;
@@ -23,6 +25,7 @@ export function createPlayer(id: number, canvasWidth: number, canvasHeight: numb
     { x: SPAWN_PADDING, y: canvasHeight / 2, angle: 0 },
     { x: canvasWidth - SPAWN_PADDING, y: canvasHeight / 2, angle: Math.PI },
     { x: canvasWidth / 2, y: SPAWN_PADDING, angle: Math.PI / 2 },
+    { x: canvasWidth / 2, y: canvasHeight - SPAWN_PADDING, angle: -Math.PI / 2 },
   ];
   
   const spawn = spawnPositions[id];
@@ -37,6 +40,7 @@ export function createPlayer(id: number, canvasWidth: number, canvasHeight: numb
     trail: [],
     turnLeft: controls.turnLeft,
     turnRight: controls.turnRight,
+    controlType: controls.controlType,
     nextGapTime: 0,
     gapActive: false,
     gapEndTime: 0,

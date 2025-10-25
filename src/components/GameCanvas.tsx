@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import type { GameConfig, Player, Keys } from '@/lib/types';
 import {
   createPlayer,
@@ -19,8 +20,41 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playersRef = useRef<Player[]>([]);
   const keysRef = useRef<Keys>({});
+  const mouseButtonsRef = useRef({ left: false, right: false });
   const animationRef = useRef<number>(0);
   const lastGrowthRef = useRef<number>(0);
+  const [showRestart, setShowRestart] = useState(false);
+  const [winner, setWinner] = useState<number | null>(null);
+  const gameLoopRef = useRef<(() => void) | null>(null);
+
+  const startNewGame = () => {
+    setShowRestart(false);
+    setWinner(null);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
+      createPlayer(i, canvas.width, canvas.height)
+    );
+
+    const now = Date.now();
+    playersRef.current.forEach((player) => {
+      player.nextGapTime = now + Math.random() * config.gapInterval;
+    });
+
+    lastGrowthRef.current = now;
+
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+    
+    if (gameLoopRef.current) {
+      animationRef.current = requestAnimationFrame(gameLoopRef.current);
+    }
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -51,8 +85,33 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
       keysRef.current[e.key] = false;
     };
 
+    const handleMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      if (e.button === 0) {
+        mouseButtonsRef.current.left = true;
+      } else if (e.button === 2) {
+        mouseButtonsRef.current.right = true;
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      e.preventDefault();
+      if (e.button === 0) {
+        mouseButtonsRef.current.left = false;
+      } else if (e.button === 2) {
+        mouseButtonsRef.current.right = false;
+      }
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('contextmenu', handleContextMenu);
 
     const gameLoop = () => {
       if (!canvas || !ctx) return;
@@ -62,26 +121,34 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
 
       if (alivePlayers.length <= 1) {
         if (alivePlayers.length === 1) {
-          const winner = alivePlayers[0];
-          toast(`Player ${winner.id + 1} Wins! 🏆`, {
+          const winnerPlayer = alivePlayers[0];
+          setWinner(winnerPlayer.id);
+          toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
             description: 'Congratulations on your victory!',
             duration: 5000,
           });
-          setTimeout(() => onGameEnd(winner.id), 2000);
-        } else {
-          setTimeout(() => onGameEnd(), 2000);
         }
+        setShowRestart(true);
         return;
       }
 
       playersRef.current.forEach((player) => {
         if (!player.alive) return;
 
-        if (keysRef.current[player.turnLeft]) {
-          player.angle -= TURN_SPEED;
-        }
-        if (keysRef.current[player.turnRight]) {
-          player.angle += TURN_SPEED;
+        if (player.controlType === 'keyboard') {
+          if (keysRef.current[player.turnLeft]) {
+            player.angle -= TURN_SPEED;
+          }
+          if (keysRef.current[player.turnRight]) {
+            player.angle += TURN_SPEED;
+          }
+        } else if (player.controlType === 'mouse') {
+          if (mouseButtonsRef.current.left) {
+            player.angle -= TURN_SPEED;
+          }
+          if (mouseButtonsRef.current.right) {
+            player.angle += TURN_SPEED;
+          }
         }
 
         player.x += Math.cos(player.angle) * config.speed;
@@ -174,16 +241,37 @@ export function GameCanvas({ config, onGameEnd }: GameCanvasProps) {
       animationRef.current = requestAnimationFrame(gameLoop);
     };
 
+    gameLoopRef.current = gameLoop;
     animationRef.current = requestAnimationFrame(gameLoop);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      canvas.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('contextmenu', handleContextMenu);
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [config, onGameEnd]);
+  }, [config]);
 
-  return <canvas ref={canvasRef} className="block" />;
+  return (
+    <>
+      <canvas ref={canvasRef} className="block" />
+      {showRestart && (
+        <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+          <div className="pointer-events-auto">
+            <Button
+              onClick={startNewGame}
+              size="lg"
+              className="text-lg h-14 px-8"
+            >
+              Play Again
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }

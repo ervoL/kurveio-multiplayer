@@ -45,6 +45,7 @@
   --player-1: oklch(0.65 0.25 25);
   --player-2: oklch(0.70 0.20 145);
   --player-3: oklch(0.65 0.20 240);
+  --player-4: oklch(0.75 0.18 70);
 }
 
 @theme {

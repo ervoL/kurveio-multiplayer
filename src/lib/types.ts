@@ -15,6 +15,7 @@ export interface Player {
   trail: Point[];
   turnLeft: string;
   turnRight: string;
+  controlType: 'keyboard' | 'mouse';
   nextGapTime: number;
   gapActive: boolean;
   gapEndTime: number;
