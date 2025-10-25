@@ -46,14 +46,16 @@ export const getTouchControlsForPlayer = (playerId: number, canvasWidth: number,
       rightX: canvasWidth - padding - controlSize, 
       rightY: canvasHeight / 2 + controlSize + 20 
     },
-    // Player 3: starts from top, controls on top horizontally centered
+    // Player 3: starts from top moving down, controls on top horizontally centered
+    // When moving down, left turn goes to the right side of screen, so swap positions
     { 
-      leftX: canvasWidth / 2 - controlSize * 2 - 20, 
+      leftX: canvasWidth / 2 + controlSize * 2 + 20,  // Swapped: left control on right side
       leftY: padding + controlSize, 
-      rightX: canvasWidth / 2 + controlSize * 2 + 20, 
+      rightX: canvasWidth / 2 - controlSize * 2 - 20,  // Swapped: right control on left side
       rightY: padding + controlSize 
     },
-    // Player 4: starts from bottom, controls on bottom horizontally centered
+    // Player 4: starts from bottom moving up, controls on bottom horizontally centered
+    // When moving up, left turn goes to the left side of screen, so normal order
     { 
       leftX: canvasWidth / 2 - controlSize * 2 - 20, 
       leftY: canvasHeight - padding - controlSize, 
