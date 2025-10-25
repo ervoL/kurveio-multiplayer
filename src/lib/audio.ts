@@ -34,8 +34,8 @@ export class AudioManager {
   }
 
   /**
-   * Calculate the minimum distance from any alive snake to other players' trails
-   * (only checks trails of OTHER players, not own trail)
+   * Calculate the minimum distance from any alive snake to other ALIVE players' trails
+   * (only checks trails of OTHER ALIVE players, not own trail or dead players)
    */
   private getMinDistanceToObstacle(players: Player[]): number {
     const alivePlayers = players.filter(p => p.alive);
@@ -46,17 +46,17 @@ export class AudioManager {
 
     let minDistance = Infinity;
 
-    // For each alive snake, find the closest trail point from OTHER players
+    // For each alive snake, find the closest trail point from OTHER ALIVE players
     for (const alivePlayer of alivePlayers) {
-      // Check distance to trails from all OTHER players
-      for (const player of players) {
+      // Check distance to trails from all OTHER ALIVE players only
+      for (const otherPlayer of alivePlayers) {
         // Skip own trail entirely
-        if (player.id === alivePlayer.id) continue;
+        if (otherPlayer.id === alivePlayer.id) continue;
         
-        if (player.trail.length === 0) continue;
+        if (otherPlayer.trail.length === 0) continue;
         
-        for (let i = 0; i < player.trail.length; i++) {
-          const point = player.trail[i];
+        for (let i = 0; i < otherPlayer.trail.length; i++) {
+          const point = otherPlayer.trail[i];
           
           // Skip gap points
           if (point.isGap) continue;
@@ -82,9 +82,6 @@ export class AudioManager {
 
     const minDistance = this.getMinDistanceToObstacle(players);
     const now = Date.now();
-
-    // Debug: Log the distance
-    console.log('Min distance to obstacle:', minDistance === Infinity ? 'Infinity' : minDistance.toFixed(2));
 
     // Stop heartbeat if no players alive or no obstacles
     if (minDistance === Infinity) {
@@ -112,9 +109,6 @@ export class AudioManager {
     const minVolume = 0.5;
     const maxVolume = 1.0;
     const volume = Math.min(1.0, Math.max(0, maxVolume - (maxVolume - minVolume) * normalizedDist));
-
-    // Debug: Log calculated values
-    console.log('Normalized distance:', normalizedDist.toFixed(2), 'Period:', Math.round(period), 'Volume:', volume.toFixed(2));
 
     // Only update if:
     // 1. Heartbeat not started yet, OR
@@ -152,7 +146,6 @@ export class AudioManager {
 
     // Set new heartbeat
     this.heartbeatInterval = window.setInterval(() => {
-      console.log('Playing heartbeat - volume:', volume.toFixed(2), 'period:', Math.round(period) + 'ms');
       const heart = this.heartSound.cloneNode() as HTMLAudioElement;
       heart.volume = volume;
       heart.play().catch(err => console.warn('Failed to play heartbeat:', err));
