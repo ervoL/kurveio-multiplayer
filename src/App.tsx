@@ -1,18 +1,46 @@
 import { useState } from 'react';
 import { Toaster } from '@/components/ui/sonner';
+import { ModeSelection } from '@/components/ModeSelection';
 import { ConfigScreen } from '@/components/ConfigScreen';
+import { OnlineLobby } from '@/components/OnlineLobby';
 import { GameCanvas } from '@/components/GameCanvas';
 import { Scoreboard } from '@/components/Scoreboard';
-import type { GameConfig } from '@/lib/types';
+import type { GameConfig, GameMode } from '@/lib/types';
+import type { NetworkManager } from '@/lib/network';
+
+type AppState = 'mode-select' | 'config' | 'online-lobby' | 'playing';
 
 function App() {
-  const [gameState, setGameState] = useState<'config' | 'playing'>('config');
+  const [appState, setAppState] = useState<AppState>('mode-select');
+  const [gameMode, setGameMode] = useState<GameMode>('local');
   const [config, setConfig] = useState<GameConfig | null>(null);
   const [scores, setScores] = useState<number[]>([0, 0, 0, 0]);
+  const [networkManager, setNetworkManager] = useState<NetworkManager | null>(null);
+  const [isHost, setIsHost] = useState(false);
 
-  const handleStartGame = (newConfig: GameConfig) => {
+  const handleSelectMode = (mode: GameMode) => {
+    setGameMode(mode);
+    if (mode === 'local') {
+      setAppState('config');
+    } else {
+      setAppState('online-lobby');
+    }
+  };
+
+  const handleStartLocalGame = (newConfig: GameConfig) => {
     setConfig(newConfig);
-    setGameState('playing');
+    setAppState('playing');
+  };
+
+  const handleStartOnlineGame = (
+    newConfig: GameConfig,
+    manager: NetworkManager,
+    host: boolean
+  ) => {
+    setConfig(newConfig);
+    setNetworkManager(manager);
+    setIsHost(host);
+    setAppState('playing');
   };
 
   const handleGameEnd = (winnerId?: number) => {
@@ -26,16 +54,43 @@ function App() {
   };
 
   const handleBackToMenu = () => {
-    setGameState('config');
-    setScores([0, 0, 0, 0]); // Reset scores when going back to menu
+    // Disconnect network if online mode
+    if (networkManager) {
+      networkManager.disconnect();
+      setNetworkManager(null);
+    }
+    setAppState('mode-select');
+    setScores([0, 0, 0, 0]);
+    setGameMode('local');
+  };
+
+  const handleBackFromLobby = () => {
+    setAppState('mode-select');
+  };
+
+  const handleBackFromConfig = () => {
+    setAppState('mode-select');
   };
 
   return (
     <>
-      {gameState === 'config' && <ConfigScreen onStartGame={handleStartGame} />}
-      {gameState === 'playing' && config && (
+      {appState === 'mode-select' && <ModeSelection onSelectMode={handleSelectMode} />}
+      {appState === 'config' && (
+        <ConfigScreen onStartGame={handleStartLocalGame} onBack={handleBackFromConfig} />
+      )}
+      {appState === 'online-lobby' && (
+        <OnlineLobby onStartGame={handleStartOnlineGame} onBack={handleBackFromLobby} />
+      )}
+      {appState === 'playing' && config && (
         <>
-          <GameCanvas config={config} onGameEnd={handleGameEnd} onBackToMenu={handleBackToMenu} />
+          <GameCanvas
+            config={config}
+            onGameEnd={handleGameEnd}
+            onBackToMenu={handleBackToMenu}
+            networkManager={networkManager}
+            isHost={isHost}
+            gameMode={gameMode}
+          />
           <Scoreboard scores={scores} playerCount={config.playerCount} />
         </>
       )}

@@ -4,14 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { Play } from '@phosphor-icons/react';
+import { Play, ArrowLeft } from '@phosphor-icons/react';
 import type { GameConfig } from '@/lib/types';
 
 interface ConfigScreenProps {
   onStartGame: (config: GameConfig) => void;
+  onBack?: () => void;
 }
 
-export function ConfigScreen({ onStartGame }: ConfigScreenProps) {
+export function ConfigScreen({ onStartGame, onBack }: ConfigScreenProps) {
   const [playerCount, setPlayerCount] = useState(2);
   const [speed, setSpeed] = useState(2);
   const [gapInterval, setGapInterval] = useState(3000);
@@ -27,10 +28,17 @@ export function ConfigScreen({ onStartGame }: ConfigScreenProps) {
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-8">
       <Card className="w-full max-w-lg p-8 space-y-6">
+        {onBack && (
+          <Button variant="ghost" size="sm" onClick={onBack} className="mb-2">
+            <ArrowLeft className="mr-2" />
+            Back
+          </Button>
+        )}
+        
         <div className="text-center space-y-2">
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight">KURVE</h1>
           <p className="text-sm text-muted-foreground tracking-wide">
-            Multiplayer Snake Arena
+            Local Multiplayer
           </p>
         </div>
 

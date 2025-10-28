@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import type { GameConfig, Player, Keys, TouchControl } from '@/lib/types';
+import type { GameConfig, Player, Keys, TouchControl, GameMode, GameState } from '@/lib/types';
+import type { NetworkManager } from '@/lib/network';
 import {
   createPlayer,
   checkCollision,
@@ -19,9 +20,12 @@ interface GameCanvasProps {
   config: GameConfig;
   onGameEnd: (winnerId?: number) => void;
   onBackToMenu: () => void;
+  networkManager?: NetworkManager | null;
+  isHost?: boolean;
+  gameMode: GameMode;
 }
 
-export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps) {
+export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, isHost, gameMode }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playersRef = useRef<Player[]>([]);
   const keysRef = useRef<Keys>({});
@@ -33,6 +37,9 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
   const touchControlsRef = useRef<TouchControl[]>([]);
   const [isMobile, setIsMobile] = useState(false);
   const audioManagerRef = useRef<AudioManager | null>(null);
+  const myPlayerIdRef = useRef<number>(0);
+  const lastStateUpdateRef = useRef<number>(0);
+  const inputBufferRef = useRef({ turnLeft: false, turnRight: false });
 
   const startNewGame = () => {
     setShowRestart(false);
@@ -144,6 +151,53 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
       player.nextGapTime = now + Math.random() * config.gapInterval;
     });
 
+    // Set up network handlers for online mode
+    if (gameMode === 'online' && networkManager) {
+      if (isHost) {
+        // HOST: Handle input from clients
+        networkManager.on('input', (data, peerId) => {
+          const inputData = data as { playerId: number; turnLeft: boolean; turnRight: boolean };
+          const player = playersRef.current[inputData.playerId];
+          if (player && player.alive) {
+            // Apply client input to their player
+            if (inputData.turnLeft && !inputData.turnRight) {
+              player.angle -= TURN_SPEED;
+            } else if (inputData.turnRight && !inputData.turnLeft) {
+              player.angle += TURN_SPEED;
+            }
+          }
+        });
+      } else {
+        // Client: Find my player ID
+        const myPeerId = networkManager.myPeerId;
+        // For now, clients are assigned player ID 1 (will be improved with proper assignment)
+        myPlayerIdRef.current = 1;
+        
+        // Handle state updates from host
+        networkManager.on('state', (data) => {
+          const stateData = data as { state: GameState };
+          playersRef.current = stateData.state.players;
+        });
+
+        // Handle game end from host
+        networkManager.on('game-end', (data) => {
+          const endData = data as { winnerId?: number };
+          if (endData.winnerId !== undefined) {
+            const winnerPlayer = playersRef.current.find((p) => p.id === endData.winnerId);
+            if (winnerPlayer) {
+              setWinner(winnerPlayer.id);
+              onGameEnd(winnerPlayer.id);
+              toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
+                description: 'Congratulations on your victory!',
+                duration: 5000,
+              });
+            }
+          }
+          setShowRestart(true);
+        });
+      }
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.key] = true;
     };
@@ -233,108 +287,240 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
       if (!canvas || !ctx) return;
 
       const now = Date.now();
-      const alivePlayers = playersRef.current.filter((p) => p.alive);
 
-      // For multiplayer: game ends when 1 or fewer players remain
-      // For single player: game never ends, player respawns after crash
-      if (config.playerCount > 1 && alivePlayers.length <= 1) {
-        // Stop heartbeat when game ends
-        audioManagerRef.current?.stopHeartbeat();
-        
-        if (alivePlayers.length === 1) {
-          const winnerPlayer = alivePlayers[0];
-          setWinner(winnerPlayer.id);
-          onGameEnd(winnerPlayer.id);
-          toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
-            description: 'Congratulations on your victory!',
-            duration: 5000,
-          });
-        }
-        setShowRestart(true);
-        return;
-      }
+      // Online mode: Different behavior for host vs client
+      if (gameMode === 'online' && networkManager) {
+        if (isHost) {
+          // HOST: Run full game simulation
+          const alivePlayers = playersRef.current.filter((p) => p.alive);
 
-      playersRef.current.forEach((player) => {
-        if (!player.alive) return;
-
-        if (player.controlType === 'keyboard') {
-          if (keysRef.current[player.turnLeft]) {
-            player.angle -= TURN_SPEED;
-          }
-          if (keysRef.current[player.turnRight]) {
-            player.angle += TURN_SPEED;
-          }
-        } else if (player.controlType === 'mouse') {
-          if (mouseButtonsRef.current.left) {
-            player.angle -= TURN_SPEED;
-          }
-          if (mouseButtonsRef.current.right) {
-            player.angle += TURN_SPEED;
-          }
-        } else if (player.controlType === 'touch') {
-          if (player.touchLeftActive) {
-            player.angle -= TURN_SPEED;
-          }
-          if (player.touchRightActive) {
-            player.angle += TURN_SPEED;
-          }
-        }
-
-        player.x += Math.cos(player.angle) * config.speed;
-        player.y += Math.sin(player.angle) * config.speed;
-
-        player.x = wrapPosition(player.x, canvas.width);
-        player.y = wrapPosition(player.y, canvas.height);
-
-        if (now >= player.nextGapTime && !player.gapActive) {
-          player.gapActive = true;
-          player.gapEndTime = now + GAP_LENGTH * (1000 / 60);
-          player.nextGapTime = now + config.gapInterval + Math.random() * config.gapInterval;
-        }
-
-        if (player.gapActive && now >= player.gapEndTime) {
-          player.gapActive = false;
-        }
-
-        // Always add trail point (even for collision check before dying)
-        player.trail.push({
-          x: player.x,
-          y: player.y,
-          isGap: player.gapActive,
-        });
-
-        // Check collision after adding the trail point
-        if (!player.gapActive) {
-          if (checkCollision(player.x, player.y, playersRef.current, player.id)) {
-            // Play crash sound
-            audioManagerRef.current?.playCrash();
+          // Check game end condition
+          if (config.playerCount > 1 && alivePlayers.length <= 1) {
+            audioManagerRef.current?.stopHeartbeat();
             
-            // In single player mode, respawn the player
-            if (config.playerCount === 1) {
-              // Clear the trail
-              player.trail = [];
-              // Reset position to starting point
-              const spawn = { x: SPAWN_PADDING, y: canvas.height / 2, angle: 0 };
-              player.x = spawn.x;
-              player.y = spawn.y;
-              player.angle = spawn.angle;
-              player.alive = true;
-              // Reset gap timing
-              player.nextGapTime = now + Math.random() * config.gapInterval;
+            if (alivePlayers.length === 1) {
+              const winnerPlayer = alivePlayers[0];
+              setWinner(winnerPlayer.id);
+              onGameEnd(winnerPlayer.id);
+              
+              // Notify all clients
+              networkManager.send({
+                type: 'game-end',
+                winnerId: winnerPlayer.id,
+              });
+              
+              toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
+                description: 'Congratulations on your victory!',
+                duration: 5000,
+              });
+            }
+            setShowRestart(true);
+            return;
+          }
+
+          // Update all players (host simulates all)
+          playersRef.current.forEach((player) => {
+            if (!player.alive) return;
+
+            // Apply controls for each player
+            if (player.controlType === 'keyboard') {
+              if (keysRef.current[player.turnLeft]) {
+                player.angle -= TURN_SPEED;
+              }
+              if (keysRef.current[player.turnRight]) {
+                player.angle += TURN_SPEED;
+              }
+            } else if (player.controlType === 'mouse') {
+              if (mouseButtonsRef.current.left) {
+                player.angle -= TURN_SPEED;
+              }
+              if (mouseButtonsRef.current.right) {
+                player.angle += TURN_SPEED;
+              }
+            } else if (player.controlType === 'touch') {
+              if (player.touchLeftActive) {
+                player.angle -= TURN_SPEED;
+              }
+              if (player.touchRightActive) {
+                player.angle += TURN_SPEED;
+              }
+            }
+
+            // Update position
+            player.x += Math.cos(player.angle) * config.speed;
+            player.y += Math.sin(player.angle) * config.speed;
+            player.x = wrapPosition(player.x, canvas.width);
+            player.y = wrapPosition(player.y, canvas.height);
+
+            // Handle gaps
+            if (now >= player.nextGapTime && !player.gapActive) {
+              player.gapActive = true;
+              player.gapEndTime = now + GAP_LENGTH * (1000 / 60);
+              player.nextGapTime = now + config.gapInterval + Math.random() * config.gapInterval;
+            }
+
+            if (player.gapActive && now >= player.gapEndTime) {
               player.gapActive = false;
-            } else {
-              // In multiplayer mode, mark player as dead
-              player.alive = false;
-              // Add one final trail point to ensure no gap where the snake died
-              player.trail.push({
-                x: player.x,
-                y: player.y,
-                isGap: false,
+            }
+
+            // Add trail point
+            player.trail.push({
+              x: player.x,
+              y: player.y,
+              isGap: player.gapActive,
+            });
+
+            // Check collision
+            if (!player.gapActive) {
+              if (checkCollision(player.x, player.y, playersRef.current, player.id)) {
+                audioManagerRef.current?.playCrash();
+                player.alive = false;
+                player.trail.push({
+                  x: player.x,
+                  y: player.y,
+                  isGap: false,
+                });
+              }
+            }
+          });
+
+          // Broadcast state to clients (throttled to ~30 updates/sec)
+          if (now - lastStateUpdateRef.current > 33) {
+            lastStateUpdateRef.current = now;
+            const gameState: GameState = {
+              players: playersRef.current,
+              timestamp: now,
+            };
+            networkManager.send({
+              type: 'state',
+              state: gameState,
+            });
+          }
+        } else {
+          // CLIENT: Send inputs to host, render received state
+          const myPlayer = playersRef.current[myPlayerIdRef.current];
+          if (myPlayer && myPlayer.alive) {
+            let turnLeft = false;
+            let turnRight = false;
+
+            // Check my controls
+            if (myPlayer.controlType === 'keyboard') {
+              turnLeft = keysRef.current[myPlayer.turnLeft] || false;
+              turnRight = keysRef.current[myPlayer.turnRight] || false;
+            } else if (myPlayer.controlType === 'mouse') {
+              turnLeft = mouseButtonsRef.current.left;
+              turnRight = mouseButtonsRef.current.right;
+            } else if (myPlayer.controlType === 'touch') {
+              turnLeft = myPlayer.touchLeftActive || false;
+              turnRight = myPlayer.touchRightActive || false;
+            }
+
+            // Send input if changed
+            if (turnLeft !== inputBufferRef.current.turnLeft || turnRight !== inputBufferRef.current.turnRight) {
+              inputBufferRef.current = { turnLeft, turnRight };
+              networkManager.send({
+                type: 'input',
+                playerId: myPlayerIdRef.current,
+                turnLeft,
+                turnRight,
+                timestamp: now,
               });
             }
           }
         }
-      });
+      } else {
+        // LOCAL MODE: Original game loop
+        const alivePlayers = playersRef.current.filter((p) => p.alive);
+
+        if (config.playerCount > 1 && alivePlayers.length <= 1) {
+          audioManagerRef.current?.stopHeartbeat();
+          
+          if (alivePlayers.length === 1) {
+            const winnerPlayer = alivePlayers[0];
+            setWinner(winnerPlayer.id);
+            onGameEnd(winnerPlayer.id);
+            toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
+              description: 'Congratulations on your victory!',
+              duration: 5000,
+            });
+          }
+          setShowRestart(true);
+          return;
+        }
+
+        playersRef.current.forEach((player) => {
+          if (!player.alive) return;
+
+          if (player.controlType === 'keyboard') {
+            if (keysRef.current[player.turnLeft]) {
+              player.angle -= TURN_SPEED;
+            }
+            if (keysRef.current[player.turnRight]) {
+              player.angle += TURN_SPEED;
+            }
+          } else if (player.controlType === 'mouse') {
+            if (mouseButtonsRef.current.left) {
+              player.angle -= TURN_SPEED;
+            }
+            if (mouseButtonsRef.current.right) {
+              player.angle += TURN_SPEED;
+            }
+          } else if (player.controlType === 'touch') {
+            if (player.touchLeftActive) {
+              player.angle -= TURN_SPEED;
+            }
+            if (player.touchRightActive) {
+              player.angle += TURN_SPEED;
+            }
+          }
+
+          player.x += Math.cos(player.angle) * config.speed;
+          player.y += Math.sin(player.angle) * config.speed;
+
+          player.x = wrapPosition(player.x, canvas.width);
+          player.y = wrapPosition(player.y, canvas.height);
+
+          if (now >= player.nextGapTime && !player.gapActive) {
+            player.gapActive = true;
+            player.gapEndTime = now + GAP_LENGTH * (1000 / 60);
+            player.nextGapTime = now + config.gapInterval + Math.random() * config.gapInterval;
+          }
+
+          if (player.gapActive && now >= player.gapEndTime) {
+            player.gapActive = false;
+          }
+
+          player.trail.push({
+            x: player.x,
+            y: player.y,
+            isGap: player.gapActive,
+          });
+
+          if (!player.gapActive) {
+            if (checkCollision(player.x, player.y, playersRef.current, player.id)) {
+              audioManagerRef.current?.playCrash();
+              
+              if (config.playerCount === 1) {
+                player.trail = [];
+                const spawn = { x: SPAWN_PADDING, y: canvas.height / 2, angle: 0 };
+                player.x = spawn.x;
+                player.y = spawn.y;
+                player.angle = spawn.angle;
+                player.alive = true;
+                player.nextGapTime = now + Math.random() * config.gapInterval;
+                player.gapActive = false;
+              } else {
+                player.alive = false;
+                player.trail.push({
+                  x: player.x,
+                  y: player.y,
+                  isGap: false,
+                });
+              }
+            }
+          }
+        });
+      }
 
       // Update heartbeat based on distance between alive snakes
       audioManagerRef.current?.updateHeartbeat(playersRef.current);
