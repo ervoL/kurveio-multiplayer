@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { X } from '@phosphor-icons/react';
 import type { GameConfig, Player, Keys, TouchControl, GameMode, GameState } from '@/lib/types';
 import type { NetworkManager } from '@/lib/network';
 import {
@@ -248,6 +249,14 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
             turnRight: inputData.turnRight,
           });
         });
+
+        // Handle disconnect (host receives when clients disconnect)
+        networkManager.on('disconnect', (data) => {
+          console.log('Client disconnected:', data);
+          toast.error(`A player disconnected from the game`, {
+            description: 'The game will continue with remaining players',
+          });
+        });
       } else {
         // CLIENT: Handle state updates from host
         networkManager.on('state', (data) => {
@@ -290,6 +299,26 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
           console.log('Client: Received back-to-lobby message from host');
           if (onBackToLobby) {
             onBackToLobby();
+          }
+        });
+
+        // Handle disconnect
+        networkManager.on('disconnect', (data) => {
+          console.log('Player disconnected:', data);
+          if (isHost) {
+            // Host notifies when a client disconnects
+            toast.error(`Player disconnected from the game`, {
+              description: 'The game will continue with remaining players',
+            });
+          } else {
+            // Client notifies when host disconnects
+            toast.error(`Host disconnected`, {
+              description: 'Returning to main menu...',
+            });
+            // Return to menu after a short delay
+            setTimeout(() => {
+              onBackToMenu();
+            }, 2000);
           }
         });
       }
@@ -861,6 +890,16 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
         className="block w-full h-full fixed top-0 left-0" 
         style={{ touchAction: 'none' }}
       />
+      
+      {/* Back to menu button */}
+      <Button
+        onClick={onBackToMenu}
+        variant="ghost"
+        size="icon"
+        className="fixed top-4 left-4 z-10 bg-transparent border-transparent backdrop-blur-none shadow-none hover:bg-background/10 opacity-70 hover:opacity-100 transition-opacity"
+      >
+        <X size={32} weight="bold" />
+      </Button>
       
       {/* Connection indicator for online mode */}
       {gameMode === 'online' && networkManager && (

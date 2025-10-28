@@ -25,7 +25,7 @@ export function ModeSelection({ onSelectMode }: ModeSelectionProps) {
             size="lg"
           >
             <Monitor className="mr-3" size={24} weight="fill" />
-            Local Multiplayer
+            Local
             <span className="ml-auto text-sm opacity-70">Same Device</span>
           </Button>
 
@@ -36,7 +36,7 @@ export function ModeSelection({ onSelectMode }: ModeSelectionProps) {
             size="lg"
           >
             <Users className="mr-3" size={24} weight="fill" />
-            Online Multiplayer
+            Online
             <span className="ml-auto text-sm opacity-70">Different Devices</span>
           </Button>
         </div>
