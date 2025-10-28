@@ -50,6 +50,7 @@ export interface NetworkPlayer {
   playerName: string;
   ready: boolean;
   playerId?: number;
+  controlType?: 'keyboard' | 'mouse' | 'touch';
 }
 
 export interface GameState {
@@ -74,6 +75,7 @@ export interface PlayerJoinMessage {
   type: 'player-join';
   playerName: string;
   peerId: string;
+  controlType: 'keyboard' | 'mouse' | 'touch';
 }
 
 export interface PlayerReadyMessage {
@@ -90,7 +92,7 @@ export interface PlayerListMessage {
 export interface StartGameMessage {
   type: 'start-game';
   config: GameConfig;
-  playerAssignments: { peerId: string; playerId: number; playerName: string }[];
+  playerAssignments: { peerId: string; playerId: number; playerName: string; controlType: 'keyboard' | 'mouse' | 'touch' }[];
 }
 
 export interface GameEndMessage {

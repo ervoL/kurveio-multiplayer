@@ -1,5 +1,6 @@
 import Peer, { DataConnection } from 'peerjs';
 import type { NetworkMessage, NetworkPlayer } from './types';
+import { isTouchDevice } from './game';
 
 // PeerJS server configuration
 // For local testing: Set VITE_USE_LOCAL_PEERSERVER=true in .env.local
@@ -107,11 +108,13 @@ export class NetworkManager {
             this.hostConnection = conn;
             this.setupConnectionHandlers(conn);
             
-            // Send join message
+            // Send join message with control type
+            const controlType = isTouchDevice() ? 'touch' : 'keyboard';
             this.send({
               type: 'player-join',
               playerName: this.myPlayerName,
               peerId: this.myPeerId,
+              controlType: controlType,
             });
             
             resolve();

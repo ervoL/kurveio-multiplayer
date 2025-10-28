@@ -18,7 +18,7 @@ function App() {
   const [networkManager, setNetworkManager] = useState<NetworkManager | null>(null);
   const [isHost, setIsHost] = useState(false);
   const [myPlayerId, setMyPlayerId] = useState(0);
-  const [playerAssignments, setPlayerAssignments] = useState<{ peerId: string; playerId: number; playerName: string }[]>([]);
+  const [playerAssignments, setPlayerAssignments] = useState<{ peerId: string; playerId: number; playerName: string; controlType: 'keyboard' | 'mouse' | 'touch' }[]>([]);
 
   const handleSelectMode = (mode: GameMode) => {
     setGameMode(mode);
@@ -39,7 +39,7 @@ function App() {
     manager: NetworkManager,
     host: boolean,
     playerId: number,
-    assignments: { peerId: string; playerId: number; playerName: string }[]
+    assignments: { peerId: string; playerId: number; playerName: string; controlType: 'keyboard' | 'mouse' | 'touch' }[]
   ) => {
     setConfig(newConfig);
     setNetworkManager(manager);

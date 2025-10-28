@@ -25,7 +25,7 @@ interface GameCanvasProps {
   isHost?: boolean;
   gameMode: GameMode;
   myPlayerId?: number;
-  playerAssignments?: { peerId: string; playerId: number; playerName: string }[];
+  playerAssignments?: { peerId: string; playerId: number; playerName: string; controlType: 'keyboard' | 'mouse' | 'touch' }[];
 }
 
 export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, networkManager, isHost, gameMode, myPlayerId = 0, playerAssignments = [] }: GameCanvasProps) {
@@ -109,36 +109,45 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
     const worldHeight = gameMode === 'online' ? gameWorldRef.current.height : canvas.height;
 
     playersRef.current = Array.from({ length: config.playerCount }, (_, i) => {
-      const playerName = playerAssignments.find(a => a.playerId === i)?.playerName;
-      return createPlayer(i, worldWidth, worldHeight, playerName, gameMode);
+      const assignment = playerAssignments.find(a => a.playerId === i);
+      const playerName = assignment?.playerName;
+      const playerControlType = assignment?.controlType;
+      return createPlayer(i, worldWidth, worldHeight, playerName, gameMode, playerControlType);
     });
 
-    // Reinitialize touch controls (always use canvas size for UI elements)
-    if (isMobile) {
+    // Reinitialize touch controls - only for current player at bottom of screen
+    // Check if the CURRENT player (not the device) is using touch controls
+    const currentPlayerId = gameMode === 'online' ? myPlayerIdRef.current : 0;
+    const currentPlayer = playersRef.current[currentPlayerId];
+    const showTouchControls = currentPlayer && currentPlayer.controlType === 'touch';
+    
+    if (showTouchControls) {
       const controlSize = 60;
+      const padding = 40; // Distance from screen edges
+      const verticalPosition = canvas.height - 100; // Fixed position near bottom
+      const horizontalSpacing = 150; // Space between left and right controls
+      
       touchControlsRef.current = [];
       
-      for (let i = 0; i < config.playerCount; i++) {
-        const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
-        
-        touchControlsRef.current.push({
-          playerId: i,
-          side: 'left',
-          x: positions.leftX,
-          y: positions.leftY,
-          radius: controlSize / 2,
-          active: false,
-        });
-        
-        touchControlsRef.current.push({
-          playerId: i,
-          side: 'right',
-          x: positions.rightX,
-          y: positions.rightY,
-          radius: controlSize / 2,
-          active: false,
-        });
-      }
+      touchControlsRef.current.push({
+        playerId: currentPlayerId,
+        side: 'left',
+        x: canvas.width / 2 - horizontalSpacing,
+        y: verticalPosition,
+        radius: controlSize / 2,
+        active: false,
+      });
+      
+      touchControlsRef.current.push({
+        playerId: currentPlayerId,
+        side: 'right',
+        x: canvas.width / 2 + horizontalSpacing,
+        y: verticalPosition,
+        radius: controlSize / 2,
+        active: false,
+      });
+    } else {
+      touchControlsRef.current = [];
     }
 
     const now = Date.now();
@@ -178,36 +187,45 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
     const worldHeight = gameMode === 'online' ? gameWorldRef.current.height : canvas.height;
 
     playersRef.current = Array.from({ length: config.playerCount }, (_, i) => {
-      const playerName = playerAssignments.find(a => a.playerId === i)?.playerName;
-      return createPlayer(i, worldWidth, worldHeight, playerName, gameMode);
+      const assignment = playerAssignments.find(a => a.playerId === i);
+      const playerName = assignment?.playerName;
+      const playerControlType = assignment?.controlType;
+      return createPlayer(i, worldWidth, worldHeight, playerName, gameMode, playerControlType);
     });
 
-    // Initialize touch controls for mobile
-    if (touchEnabled) {
+    // Initialize touch controls for mobile - only for current player at bottom of screen
+    // Check if the CURRENT player (not the device) is using touch controls
+    const currentPlayerId = gameMode === 'online' ? myPlayerId : 0;
+    const currentPlayer = playersRef.current[currentPlayerId];
+    const showTouchControls = currentPlayer && currentPlayer.controlType === 'touch';
+    
+    if (showTouchControls) {
       const controlSize = 60;
+      const padding = 40; // Distance from screen edges
+      const verticalPosition = canvas.height - 100; // Fixed position near bottom
+      const horizontalSpacing = 150; // Space between left and right controls
+      
       touchControlsRef.current = [];
       
-      for (let i = 0; i < config.playerCount; i++) {
-        const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
-        
-        touchControlsRef.current.push({
-          playerId: i,
-          side: 'left',
-          x: positions.leftX,
-          y: positions.leftY,
-          radius: controlSize / 2,
-          active: false,
-        });
-        
-        touchControlsRef.current.push({
-          playerId: i,
-          side: 'right',
-          x: positions.rightX,
-          y: positions.rightY,
-          radius: controlSize / 2,
-          active: false,
-        });
-      }
+      touchControlsRef.current.push({
+        playerId: currentPlayerId,
+        side: 'left',
+        x: canvas.width / 2 - horizontalSpacing,
+        y: verticalPosition,
+        radius: controlSize / 2,
+        active: false,
+      });
+      
+      touchControlsRef.current.push({
+        playerId: currentPlayerId,
+        side: 'right',
+        x: canvas.width / 2 + horizontalSpacing,
+        y: verticalPosition,
+        radius: controlSize / 2,
+        active: false,
+      });
+    } else {
+      touchControlsRef.current = [];
     }
 
     const now = Date.now();
@@ -723,6 +741,22 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
       if (canvas) {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        
+        // Update touch control positions for the new screen size (if they exist)
+        if (touchControlsRef.current.length > 0) {
+          const verticalPosition = canvas.height - 100;
+          const horizontalSpacing = 150;
+          
+          touchControlsRef.current.forEach((control) => {
+            if (control.side === 'left') {
+              control.x = canvas.width / 2 - horizontalSpacing;
+              control.y = verticalPosition;
+            } else {
+              control.x = canvas.width / 2 + horizontalSpacing;
+              control.y = verticalPosition;
+            }
+          });
+        }
       }
     };
 

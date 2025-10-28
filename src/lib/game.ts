@@ -77,15 +77,25 @@ export function createPlayer(
   canvasWidth: number, 
   canvasHeight: number, 
   name?: string,
-  gameMode: 'local' | 'online' = 'local'
+  gameMode: 'local' | 'online' = 'local',
+  controlType?: 'keyboard' | 'mouse' | 'touch'
 ): Player {
-  const isMobile = isTouchDevice();
+  // For online mode, use the specified controlType or default to keyboard
+  // For local mode, check if device is mobile and override, or use different controls per player
+  let finalControlType: 'keyboard' | 'mouse' | 'touch';
+  let controls: { turnLeft: string; turnRight: string; controlType: 'keyboard' | 'mouse' | 'touch' };
   
-  // For online mode, all players use arrow keys (or A/D as alternative)
-  // For local mode, use different controls per player
-  const controls = gameMode === 'online' 
-    ? { turnLeft: 'ArrowLeft', turnRight: 'ArrowRight', controlType: 'keyboard' as const }
-    : PLAYER_CONTROLS[id];
+  if (gameMode === 'online') {
+    finalControlType = controlType || 'keyboard';
+    controls = { turnLeft: 'ArrowLeft', turnRight: 'ArrowRight', controlType: finalControlType };
+  } else {
+    // Local mode
+    const isMobile = isTouchDevice();
+    finalControlType = isMobile ? 'touch' : PLAYER_CONTROLS[id].controlType;
+    controls = isMobile 
+      ? { turnLeft: 'touch-left', turnRight: 'touch-right', controlType: 'touch' as const }
+      : PLAYER_CONTROLS[id];
+  }
     
   const spawnPositions = [
     { x: SPAWN_PADDING, y: canvasHeight / 2, angle: 0 },
@@ -107,7 +117,7 @@ export function createPlayer(
     trail: [],
     turnLeft: controls.turnLeft,
     turnRight: controls.turnRight,
-    controlType: isMobile ? 'touch' : controls.controlType,
+    controlType: finalControlType,
     nextGapTime: 0,
     gapActive: false,
     gapEndTime: 0,

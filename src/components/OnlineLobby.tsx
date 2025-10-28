@@ -8,6 +8,7 @@ import { Play, Copy, ArrowLeft, Check, X } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { NetworkManager } from '@/lib/network';
 import type { GameConfig, NetworkPlayer } from '@/lib/types';
+import { isTouchDevice } from '@/lib/game';
 
 interface OnlineLobbyProps {
   onStartGame: (
@@ -15,7 +16,7 @@ interface OnlineLobbyProps {
     networkManager: NetworkManager,
     isHost: boolean,
     myPlayerId: number,
-    playerAssignments: { peerId: string; playerId: number; playerName: string }[]
+    playerAssignments: { peerId: string; playerId: number; playerName: string; controlType: 'keyboard' | 'mouse' | 'touch' }[]
   ) => void;
   onBack: () => void;
   networkManager?: NetworkManager | null;
@@ -80,6 +81,7 @@ export function OnlineLobby({ onStartGame, onBack, networkManager: existingNetwo
             peerId: data.peerId,
             playerName: data.playerName,
             ready: false,
+            controlType: data.controlType,
           },
         ];
         
@@ -157,11 +159,13 @@ export function OnlineLobby({ onStartGame, onBack, networkManager: existingNetwo
       setMyRoomCode(roomId);
       setIsHost(true);
       setIsInLobby(true);
+      const myControlType = isTouchDevice() ? 'touch' : 'keyboard';
       setPlayers([
         {
           peerId: networkManager.myPeerId,
           playerName: playerName.trim(),
           ready: false,
+          controlType: myControlType,
         },
       ]);
       toast.success('Room created successfully!');
@@ -247,6 +251,7 @@ export function OnlineLobby({ onStartGame, onBack, networkManager: existingNetwo
       peerId: p.peerId,
       playerId: index,
       playerName: p.playerName,
+      controlType: p.controlType || 'keyboard',
     }));
 
     // Send start game message to all clients
