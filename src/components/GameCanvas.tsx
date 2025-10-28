@@ -653,17 +653,34 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
   return (
     <>
       <canvas ref={canvasRef} className="block" />
+      
+      {/* Connection indicator for online mode */}
+      {gameMode === 'online' && networkManager && (
+        <div className="fixed top-4 right-4 z-10 pointer-events-none">
+          <div className="bg-background/80 backdrop-blur-sm border rounded-lg px-4 py-2 shadow-lg">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="font-medium">
+                {isHost ? 'Host' : `Player ${myPlayerId + 1}`}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {showRestart && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-4 items-center">
-            <Button
-              onClick={startNewGame}
-              size="lg"
-              className="text-lg h-14 px-8 min-w-[240px]"
-            >
-              Play Again
-              <span className="ml-3 text-sm opacity-70">(Enter)</span>
-            </Button>
+            {gameMode === 'local' && (
+              <Button
+                onClick={startNewGame}
+                size="lg"
+                className="text-lg h-14 px-8 min-w-[240px]"
+              >
+                Play Again
+                <span className="ml-3 text-sm opacity-70">(Enter)</span>
+              </Button>
+            )}
             <Button
               onClick={onBackToMenu}
               variant="outline"
