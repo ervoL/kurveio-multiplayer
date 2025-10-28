@@ -6,6 +6,7 @@ export interface GameConfig {
 
 export interface Player {
   id: number;
+  name?: string;
   x: number;
   y: number;
   angle: number;
@@ -89,7 +90,7 @@ export interface PlayerListMessage {
 export interface StartGameMessage {
   type: 'start-game';
   config: GameConfig;
-  playerAssignments: { peerId: string; playerId: number }[];
+  playerAssignments: { peerId: string; playerId: number; playerName: string }[];
 }
 
 export interface GameEndMessage {

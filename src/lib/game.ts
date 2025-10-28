@@ -72,9 +72,21 @@ export const TRAIL_WIDTH = 3;
 export const GAP_LENGTH = 15;
 export const SPAWN_PADDING = 100;
 
-export function createPlayer(id: number, canvasWidth: number, canvasHeight: number): Player {
+export function createPlayer(
+  id: number, 
+  canvasWidth: number, 
+  canvasHeight: number, 
+  name?: string,
+  gameMode: 'local' | 'online' = 'local'
+): Player {
   const isMobile = isTouchDevice();
-  const controls = PLAYER_CONTROLS[id];
+  
+  // For online mode, all players use arrow keys (or A/D as alternative)
+  // For local mode, use different controls per player
+  const controls = gameMode === 'online' 
+    ? { turnLeft: 'ArrowLeft', turnRight: 'ArrowRight', controlType: 'keyboard' as const }
+    : PLAYER_CONTROLS[id];
+    
   const spawnPositions = [
     { x: SPAWN_PADDING, y: canvasHeight / 2, angle: 0 },
     { x: canvasWidth - SPAWN_PADDING, y: canvasHeight / 2, angle: Math.PI },
@@ -86,6 +98,7 @@ export function createPlayer(id: number, canvasWidth: number, canvasHeight: numb
   
   return {
     id,
+    name: name || `Player ${id + 1}`,
     x: spawn.x,
     y: spawn.y,
     angle: spawn.angle,

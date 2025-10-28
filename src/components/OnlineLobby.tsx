@@ -14,7 +14,8 @@ interface OnlineLobbyProps {
     config: GameConfig,
     networkManager: NetworkManager,
     isHost: boolean,
-    myPlayerId: number
+    myPlayerId: number,
+    playerAssignments: { peerId: string; playerId: number; playerName: string }[]
   ) => void;
   onBack: () => void;
   networkManager?: NetworkManager | null;
@@ -118,7 +119,7 @@ export function OnlineLobby({ onStartGame, onBack, networkManager: existingNetwo
       if (myAssignment) {
         // Mark that we're transitioning to game (don't disconnect)
         isTransitioningToGame.current = true;
-        onStartGame(data.config, networkManager, false, myAssignment.playerId);
+        onStartGame(data.config, networkManager, false, myAssignment.playerId, data.playerAssignments);
       }
     });
 
@@ -245,6 +246,7 @@ export function OnlineLobby({ onStartGame, onBack, networkManager: existingNetwo
     const playerAssignments = players.map((p, index) => ({
       peerId: p.peerId,
       playerId: index,
+      playerName: p.playerName,
     }));
 
     // Send start game message to all clients
@@ -264,7 +266,7 @@ export function OnlineLobby({ onStartGame, onBack, networkManager: existingNetwo
     isTransitioningToGame.current = true;
     
     // Start game for host
-    onStartGame(gameConfig, networkManager, true, hostPlayerId);
+    onStartGame(gameConfig, networkManager, true, hostPlayerId, playerAssignments);
   };
 
   const handleBack = () => {

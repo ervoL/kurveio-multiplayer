@@ -25,9 +25,10 @@ interface GameCanvasProps {
   isHost?: boolean;
   gameMode: GameMode;
   myPlayerId?: number;
+  playerAssignments?: { peerId: string; playerId: number; playerName: string }[];
 }
 
-export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, networkManager, isHost, gameMode, myPlayerId = 0 }: GameCanvasProps) {
+export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, networkManager, isHost, gameMode, myPlayerId = 0, playerAssignments = [] }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playersRef = useRef<Player[]>([]);
   const keysRef = useRef<Keys>({});
@@ -107,9 +108,10 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
     const worldWidth = gameMode === 'online' ? gameWorldRef.current.width : canvas.width;
     const worldHeight = gameMode === 'online' ? gameWorldRef.current.height : canvas.height;
 
-    playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
-      createPlayer(i, worldWidth, worldHeight)
-    );
+    playersRef.current = Array.from({ length: config.playerCount }, (_, i) => {
+      const playerName = playerAssignments.find(a => a.playerId === i)?.playerName;
+      return createPlayer(i, worldWidth, worldHeight, playerName, gameMode);
+    });
 
     // Reinitialize touch controls (always use canvas size for UI elements)
     if (isMobile) {
@@ -175,9 +177,10 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
     const worldWidth = gameMode === 'online' ? gameWorldRef.current.width : canvas.width;
     const worldHeight = gameMode === 'online' ? gameWorldRef.current.height : canvas.height;
 
-    playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
-      createPlayer(i, worldWidth, worldHeight)
-    );
+    playersRef.current = Array.from({ length: config.playerCount }, (_, i) => {
+      const playerName = playerAssignments.find(a => a.playerId === i)?.playerName;
+      return createPlayer(i, worldWidth, worldHeight, playerName, gameMode);
+    });
 
     // Initialize touch controls for mobile
     if (touchEnabled) {
@@ -214,6 +217,9 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
 
     // Set up network handlers for online mode
     if (gameMode === 'online' && networkManager) {
+      // Set my player ID for both host and client
+      myPlayerIdRef.current = myPlayerId;
+      
       if (isHost) {
         // HOST: Handle input from clients
         networkManager.on('input', (data, peerId) => {
@@ -225,10 +231,7 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
           });
         });
       } else {
-        // CLIENT: Set my player ID from props
-        myPlayerIdRef.current = myPlayerId;
-        
-        // Handle state updates from host
+        // CLIENT: Handle state updates from host
         networkManager.on('state', (data) => {
           const stateData = data as { state: GameState };
           playersRef.current = stateData.state.players;
@@ -242,7 +245,7 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
             if (winnerPlayer) {
               setWinner(winnerPlayer.id);
               onGameEnd(winnerPlayer.id);
-              toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
+              toast(`${winnerPlayer.name} Wins! 🏆`, {
                 description: 'Next game starts in 5 seconds...',
                 duration: 5000,
               });
@@ -385,7 +388,7 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
                 winnerId: winnerPlayer.id,
               });
               
-              toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
+              toast(`${winnerPlayer.name} Wins! 🏆`, {
                 description: 'Next game starts in 5 seconds...',
                 duration: 5000,
               });
@@ -526,7 +529,7 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
             const winnerPlayer = alivePlayers[0];
             setWinner(winnerPlayer.id);
             onGameEnd(winnerPlayer.id);
-            toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
+            toast(`${winnerPlayer.name} Wins! 🏆`, {
               description: 'Next game starts in 5 seconds...',
               duration: 5000,
             });
