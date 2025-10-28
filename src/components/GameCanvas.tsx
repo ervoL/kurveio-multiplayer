@@ -637,13 +637,30 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
       ctx.fillStyle = 'oklch(0.10 0.05 250)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // For online mode, scale the rendering to fill the entire canvas
+      // For online mode, scale maintaining aspect ratio and center the game
       if (gameMode === 'online') {
         const scaleX = canvas.width / gameWorldRef.current.width;
         const scaleY = canvas.height / gameWorldRef.current.height;
         
+        // Use the minimum scale to maintain aspect ratio and fit everything on screen
+        const scale = Math.min(scaleX, scaleY);
+        
+        // Center the game world on the canvas
+        const offsetX = (canvas.width - gameWorldRef.current.width * scale) / 2;
+        const offsetY = (canvas.height - gameWorldRef.current.height * scale) / 2;
+        
         ctx.save();
-        ctx.scale(scaleX, scaleY);
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+        
+        // Draw game world background with proper aspect ratio
+        ctx.fillStyle = 'oklch(0.10 0.05 250)';
+        ctx.fillRect(0, 0, gameWorldRef.current.width, gameWorldRef.current.height);
+        
+        // Draw border around the arena
+        ctx.strokeStyle = 'oklch(0.30 0.05 250)'; // Slightly lighter than background
+        ctx.lineWidth = 2 / scale; // Adjust line width for scaling
+        ctx.strokeRect(0, 0, gameWorldRef.current.width, gameWorldRef.current.height);
       }
 
       playersRef.current.forEach((player) => {
