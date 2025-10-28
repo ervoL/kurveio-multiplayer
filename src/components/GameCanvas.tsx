@@ -23,9 +23,10 @@ interface GameCanvasProps {
   networkManager?: NetworkManager | null;
   isHost?: boolean;
   gameMode: GameMode;
+  myPlayerId?: number;
 }
 
-export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, isHost, gameMode }: GameCanvasProps) {
+export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, isHost, gameMode, myPlayerId = 0 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playersRef = useRef<Player[]>([]);
   const keysRef = useRef<Keys>({});
@@ -168,10 +169,8 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
           }
         });
       } else {
-        // Client: Find my player ID
-        const myPeerId = networkManager.myPeerId;
-        // For now, clients are assigned player ID 1 (will be improved with proper assignment)
-        myPlayerIdRef.current = 1;
+        // CLIENT: Set my player ID from props
+        myPlayerIdRef.current = myPlayerId;
         
         // Handle state updates from host
         networkManager.on('state', (data) => {

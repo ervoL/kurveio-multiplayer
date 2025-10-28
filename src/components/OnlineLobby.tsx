@@ -10,7 +10,12 @@ import { NetworkManager } from '@/lib/network';
 import type { GameConfig, NetworkPlayer } from '@/lib/types';
 
 interface OnlineLobbyProps {
-  onStartGame: (config: GameConfig, networkManager: NetworkManager, isHost: boolean) => void;
+  onStartGame: (
+    config: GameConfig,
+    networkManager: NetworkManager,
+    isHost: boolean,
+    myPlayerId: number
+  ) => void;
   onBack: () => void;
 }
 
@@ -63,7 +68,7 @@ export function OnlineLobby({ onStartGame, onBack }: OnlineLobbyProps) {
           (a) => a.peerId === networkManager.myPeerId
         );
         if (myAssignment) {
-          onStartGame(data.config, networkManager, false);
+          onStartGame(data.config, networkManager, false, myAssignment.playerId);
         }
       }
     });
@@ -193,8 +198,14 @@ export function OnlineLobby({ onStartGame, onBack }: OnlineLobbyProps) {
       playerAssignments,
     });
 
+    // Find host's player ID
+    const hostAssignment = playerAssignments.find(
+      (a) => a.peerId === networkManager.myPeerId
+    );
+    const hostPlayerId = hostAssignment ? hostAssignment.playerId : 0;
+
     // Start game for host
-    onStartGame(gameConfig, networkManager, true);
+    onStartGame(gameConfig, networkManager, true, hostPlayerId);
   };
 
   const handleBack = () => {

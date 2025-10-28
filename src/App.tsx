@@ -17,6 +17,7 @@ function App() {
   const [scores, setScores] = useState<number[]>([0, 0, 0, 0]);
   const [networkManager, setNetworkManager] = useState<NetworkManager | null>(null);
   const [isHost, setIsHost] = useState(false);
+  const [myPlayerId, setMyPlayerId] = useState(0);
 
   const handleSelectMode = (mode: GameMode) => {
     setGameMode(mode);
@@ -35,11 +36,13 @@ function App() {
   const handleStartOnlineGame = (
     newConfig: GameConfig,
     manager: NetworkManager,
-    host: boolean
+    host: boolean,
+    playerId: number
   ) => {
     setConfig(newConfig);
     setNetworkManager(manager);
     setIsHost(host);
+    setMyPlayerId(playerId);
     setAppState('playing');
   };
 
@@ -90,6 +93,7 @@ function App() {
             networkManager={networkManager}
             isHost={isHost}
             gameMode={gameMode}
+            myPlayerId={myPlayerId}
           />
           <Scoreboard scores={scores} playerCount={config.playerCount} />
         </>
