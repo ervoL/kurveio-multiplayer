@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import type { GameConfig, Player, Keys, TouchControl } from '@/lib/types';
+import { X } from '@phosphor-icons/react';
+import type { GameConfig, Player, Keys, TouchControl, GameMode, GameState } from '@/lib/types';
+import type { NetworkManager } from '@/lib/network';
 import {
   createPlayer,
   checkCollision,
@@ -19,9 +21,15 @@ interface GameCanvasProps {
   config: GameConfig;
   onGameEnd: (winnerId?: number) => void;
   onBackToMenu: () => void;
+  onBackToLobby?: () => void;
+  networkManager?: NetworkManager | null;
+  isHost?: boolean;
+  gameMode: GameMode;
+  myPlayerId?: number;
+  playerAssignments?: { peerId: string; playerId: number; playerName: string; controlType: 'keyboard' | 'mouse' | 'touch' }[];
 }
 
-export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps) {
+export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, networkManager, isHost, gameMode, myPlayerId = 0, playerAssignments = [] }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playersRef = useRef<Player[]>([]);
   const keysRef = useRef<Keys>({});
@@ -29,50 +37,145 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
   const animationRef = useRef<number>(0);
   const [showRestart, setShowRestart] = useState(false);
   const [winner, setWinner] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const gameLoopRef = useRef<(() => void) | null>(null);
   const touchControlsRef = useRef<TouchControl[]>([]);
   const [isMobile, setIsMobile] = useState(false);
   const audioManagerRef = useRef<AudioManager | null>(null);
+  const myPlayerIdRef = useRef<number>(0);
+  const lastStateUpdateRef = useRef<number>(0);
+  const inputBufferRef = useRef({ turnLeft: false, turnRight: false });
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Store client input states for continuous application on host
+  const clientInputsRef = useRef<Map<number, { turnLeft: boolean; turnRight: boolean }>>(new Map());
+  
+  // Fixed game world size for online multiplayer (independent of screen size)
+  const gameWorldRef = useRef({ width: 1920, height: 1080 });
+
+  const startCountdown = (sendMessage: boolean = true) => {
+    setCountdown(5);
+    setShowRestart(true);
+    
+    // Only host sends network messages, and only if sendMessage is true
+    const shouldSendMessages = gameMode === 'online' && isHost && networkManager && sendMessage;
+    
+    // If online mode and host, send countdown start to clients
+    if (shouldSendMessages) {
+      // Use setTimeout to ensure game-end message is processed first
+      setTimeout(() => {
+        networkManager!.send({
+          type: 'start-countdown',
+        });
+      }, 50);
+    }
+
+    let timeLeft = 5;
+    countdownTimerRef.current = setInterval(() => {
+      timeLeft--;
+      setCountdown(timeLeft);
+      
+      if (timeLeft <= 0) {
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+        
+        // If online mode and host, send restart to clients
+        if (shouldSendMessages) {
+          networkManager!.send({
+            type: 'restart-game',
+          });
+        }
+        
+        startNewGame();
+      }
+    }, 1000);
+  };
 
   const startNewGame = () => {
+    // Reset countdown and restart states
+    setCountdown(null);
     setShowRestart(false);
     setWinner(null);
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
-      createPlayer(i, canvas.width, canvas.height)
-    );
+    // For online mode, use fixed game world size; for local mode, use canvas size
+    const worldWidth = gameMode === 'online' ? gameWorldRef.current.width : canvas.width;
+    const worldHeight = gameMode === 'online' ? gameWorldRef.current.height : canvas.height;
+
+    playersRef.current = Array.from({ length: config.playerCount }, (_, i) => {
+      const assignment = playerAssignments.find(a => a.playerId === i);
+      const playerName = assignment?.playerName;
+      const playerControlType = assignment?.controlType;
+      return createPlayer(i, worldWidth, worldHeight, playerName, gameMode, playerControlType);
+    });
 
     // Reinitialize touch controls
-    if (isMobile) {
-      const controlSize = 60;
-      touchControlsRef.current = [];
+    // For online mode: only show for current player at bottom center
+    // For local mode: show for all players with touch controls at their respective positions
+    touchControlsRef.current = [];
+    
+    if (gameMode === 'online') {
+      // Online mode: single player controls at bottom center
+      const currentPlayer = playersRef.current[myPlayerIdRef.current];
+      const showTouchControls = currentPlayer && currentPlayer.controlType === 'touch';
       
-      for (let i = 0; i < config.playerCount; i++) {
-        const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
+      if (showTouchControls) {
+        const controlSize = 60;
+        const verticalPosition = canvas.height - 100;
+        const horizontalSpacing = 150;
         
         touchControlsRef.current.push({
-          playerId: i,
+          playerId: myPlayerIdRef.current,
           side: 'left',
-          x: positions.leftX,
-          y: positions.leftY,
+          x: canvas.width / 2 - horizontalSpacing,
+          y: verticalPosition,
           radius: controlSize / 2,
           active: false,
         });
         
         touchControlsRef.current.push({
-          playerId: i,
+          playerId: myPlayerIdRef.current,
           side: 'right',
-          x: positions.rightX,
-          y: positions.rightY,
+          x: canvas.width / 2 + horizontalSpacing,
+          y: verticalPosition,
           radius: controlSize / 2,
           active: false,
         });
       }
+    } else {
+      // Local mode: controls for all players with touch control type
+      const controlSize = 60;
+      
+      playersRef.current.forEach((player, i) => {
+        if (player.controlType === 'touch') {
+          const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
+          
+          touchControlsRef.current.push({
+            playerId: i,
+            side: 'left',
+            x: positions.leftX,
+            y: positions.leftY,
+            radius: controlSize / 2,
+            active: false,
+          });
+          
+          touchControlsRef.current.push({
+            playerId: i,
+            side: 'right',
+            x: positions.rightX,
+            y: positions.rightY,
+            radius: controlSize / 2,
+            active: false,
+          });
+        }
+      });
     }
 
     const now = Date.now();
@@ -107,42 +210,173 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
       audioManagerRef.current = new AudioManager();
     }
 
-    playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
-      createPlayer(i, canvas.width, canvas.height)
-    );
+    // For online mode, use fixed game world size; for local mode, use canvas size
+    const worldWidth = gameMode === 'online' ? gameWorldRef.current.width : canvas.width;
+    const worldHeight = gameMode === 'online' ? gameWorldRef.current.height : canvas.height;
+
+    playersRef.current = Array.from({ length: config.playerCount }, (_, i) => {
+      const assignment = playerAssignments.find(a => a.playerId === i);
+      const playerName = assignment?.playerName;
+      const playerControlType = assignment?.controlType;
+      return createPlayer(i, worldWidth, worldHeight, playerName, gameMode, playerControlType);
+    });
 
     // Initialize touch controls for mobile
-    if (touchEnabled) {
-      const controlSize = 60;
-      touchControlsRef.current = [];
+    // For online mode: only show for current player at bottom center
+    // For local mode: show for all players with touch controls at their respective positions
+    touchControlsRef.current = [];
+    
+    if (gameMode === 'online') {
+      // Online mode: single player controls at bottom center
+      const currentPlayer = playersRef.current[myPlayerId];
+      const showTouchControls = currentPlayer && currentPlayer.controlType === 'touch';
       
-      for (let i = 0; i < config.playerCount; i++) {
-        const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
+      if (showTouchControls) {
+        const controlSize = 60;
+        const verticalPosition = canvas.height - 100;
+        const horizontalSpacing = 150;
         
         touchControlsRef.current.push({
-          playerId: i,
+          playerId: myPlayerId,
           side: 'left',
-          x: positions.leftX,
-          y: positions.leftY,
+          x: canvas.width / 2 - horizontalSpacing,
+          y: verticalPosition,
           radius: controlSize / 2,
           active: false,
         });
         
         touchControlsRef.current.push({
-          playerId: i,
+          playerId: myPlayerId,
           side: 'right',
-          x: positions.rightX,
-          y: positions.rightY,
+          x: canvas.width / 2 + horizontalSpacing,
+          y: verticalPosition,
           radius: controlSize / 2,
           active: false,
         });
       }
+    } else {
+      // Local mode: controls for all players with touch control type
+      const controlSize = 60;
+      
+      playersRef.current.forEach((player, i) => {
+        if (player.controlType === 'touch') {
+          const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
+          
+          touchControlsRef.current.push({
+            playerId: i,
+            side: 'left',
+            x: positions.leftX,
+            y: positions.leftY,
+            radius: controlSize / 2,
+            active: false,
+          });
+          
+          touchControlsRef.current.push({
+            playerId: i,
+            side: 'right',
+            x: positions.rightX,
+            y: positions.rightY,
+            radius: controlSize / 2,
+            active: false,
+          });
+        }
+      });
     }
 
     const now = Date.now();
     playersRef.current.forEach((player) => {
       player.nextGapTime = now + Math.random() * config.gapInterval;
     });
+
+    // Set up network handlers for online mode
+    if (gameMode === 'online' && networkManager) {
+      // Set my player ID for both host and client
+      myPlayerIdRef.current = myPlayerId;
+      
+      if (isHost) {
+        // HOST: Handle input from clients
+        networkManager.on('input', (data, peerId) => {
+          const inputData = data as { playerId: number; turnLeft: boolean; turnRight: boolean };
+          // Store the client's input state for continuous application
+          clientInputsRef.current.set(inputData.playerId, {
+            turnLeft: inputData.turnLeft,
+            turnRight: inputData.turnRight,
+          });
+        });
+
+        // Handle disconnect (host receives when clients disconnect)
+        networkManager.on('disconnect', (data) => {
+          console.log('Client disconnected:', data);
+          toast.error(`A player disconnected from the game`, {
+            description: 'The game will continue with remaining players',
+          });
+        });
+      } else {
+        // CLIENT: Handle state updates from host
+        networkManager.on('state', (data) => {
+          const stateData = data as { state: GameState };
+          playersRef.current = stateData.state.players;
+        });
+
+        // Handle game end from host
+        networkManager.on('game-end', (data) => {
+          const endData = data as { winnerId?: number };
+          if (endData.winnerId !== undefined) {
+            const winnerPlayer = playersRef.current.find((p) => p.id === endData.winnerId);
+            if (winnerPlayer) {
+              setWinner(winnerPlayer.id);
+              onGameEnd(winnerPlayer.id);
+              toast(`${winnerPlayer.name} Wins! 🏆`, {
+                description: 'Next game starts in 5 seconds...',
+                duration: 5000,
+              });
+            }
+          }
+          // Don't start countdown here - wait for start-countdown message
+          setShowRestart(true);
+        });
+
+        // Handle restart game from host
+        networkManager.on('restart-game', () => {
+          console.log('Client: Received restart-game message from host');
+          startNewGame();
+        });
+
+        // Handle countdown start from host
+        networkManager.on('start-countdown', () => {
+          console.log('Client: Received start-countdown message from host');
+          startCountdown(false); // Don't send message on client
+        });
+
+        // Handle back to lobby from host
+        networkManager.on('back-to-lobby', () => {
+          console.log('Client: Received back-to-lobby message from host');
+          if (onBackToLobby) {
+            onBackToLobby();
+          }
+        });
+
+        // Handle disconnect
+        networkManager.on('disconnect', (data) => {
+          console.log('Player disconnected:', data);
+          if (isHost) {
+            // Host notifies when a client disconnects
+            toast.error(`Player disconnected from the game`, {
+              description: 'The game will continue with remaining players',
+            });
+          } else {
+            // Client notifies when host disconnects
+            toast.error(`Host disconnected`, {
+              description: 'Returning to main menu...',
+            });
+            // Return to menu after a short delay
+            setTimeout(() => {
+              onBackToMenu();
+            }, 2000);
+          }
+        });
+      }
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.key] = true;
@@ -233,114 +467,284 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
       if (!canvas || !ctx) return;
 
       const now = Date.now();
-      const alivePlayers = playersRef.current.filter((p) => p.alive);
 
-      // For multiplayer: game ends when 1 or fewer players remain
-      // For single player: game never ends, player respawns after crash
-      if (config.playerCount > 1 && alivePlayers.length <= 1) {
-        // Stop heartbeat when game ends
-        audioManagerRef.current?.stopHeartbeat();
-        
-        if (alivePlayers.length === 1) {
-          const winnerPlayer = alivePlayers[0];
-          setWinner(winnerPlayer.id);
-          onGameEnd(winnerPlayer.id);
-          toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
-            description: 'Congratulations on your victory!',
-            duration: 5000,
-          });
-        }
-        setShowRestart(true);
-        return;
-      }
+      // Online mode: Different behavior for host vs client
+      if (gameMode === 'online' && networkManager) {
+        if (isHost) {
+          // HOST: Run full game simulation
+          const alivePlayers = playersRef.current.filter((p) => p.alive);
 
-      playersRef.current.forEach((player) => {
-        if (!player.alive) return;
-
-        if (player.controlType === 'keyboard') {
-          if (keysRef.current[player.turnLeft]) {
-            player.angle -= TURN_SPEED;
-          }
-          if (keysRef.current[player.turnRight]) {
-            player.angle += TURN_SPEED;
-          }
-        } else if (player.controlType === 'mouse') {
-          if (mouseButtonsRef.current.left) {
-            player.angle -= TURN_SPEED;
-          }
-          if (mouseButtonsRef.current.right) {
-            player.angle += TURN_SPEED;
-          }
-        } else if (player.controlType === 'touch') {
-          if (player.touchLeftActive) {
-            player.angle -= TURN_SPEED;
-          }
-          if (player.touchRightActive) {
-            player.angle += TURN_SPEED;
-          }
-        }
-
-        player.x += Math.cos(player.angle) * config.speed;
-        player.y += Math.sin(player.angle) * config.speed;
-
-        player.x = wrapPosition(player.x, canvas.width);
-        player.y = wrapPosition(player.y, canvas.height);
-
-        if (now >= player.nextGapTime && !player.gapActive) {
-          player.gapActive = true;
-          player.gapEndTime = now + GAP_LENGTH * (1000 / 60);
-          player.nextGapTime = now + config.gapInterval + Math.random() * config.gapInterval;
-        }
-
-        if (player.gapActive && now >= player.gapEndTime) {
-          player.gapActive = false;
-        }
-
-        // Always add trail point (even for collision check before dying)
-        player.trail.push({
-          x: player.x,
-          y: player.y,
-          isGap: player.gapActive,
-        });
-
-        // Check collision after adding the trail point
-        if (!player.gapActive) {
-          if (checkCollision(player.x, player.y, playersRef.current, player.id)) {
-            // Play crash sound
-            audioManagerRef.current?.playCrash();
+          // Check game end condition
+          if (config.playerCount > 1 && alivePlayers.length <= 1) {
+            audioManagerRef.current?.stopHeartbeat();
             
-            // In single player mode, respawn the player
-            if (config.playerCount === 1) {
-              // Clear the trail
-              player.trail = [];
-              // Reset position to starting point
-              const spawn = { x: SPAWN_PADDING, y: canvas.height / 2, angle: 0 };
-              player.x = spawn.x;
-              player.y = spawn.y;
-              player.angle = spawn.angle;
-              player.alive = true;
-              // Reset gap timing
-              player.nextGapTime = now + Math.random() * config.gapInterval;
-              player.gapActive = false;
-            } else {
-              // In multiplayer mode, mark player as dead
-              player.alive = false;
-              // Add one final trail point to ensure no gap where the snake died
-              player.trail.push({
-                x: player.x,
-                y: player.y,
-                isGap: false,
+            if (alivePlayers.length === 1) {
+              const winnerPlayer = alivePlayers[0];
+              setWinner(winnerPlayer.id);
+              onGameEnd(winnerPlayer.id);
+              
+              // Notify all clients
+              networkManager.send({
+                type: 'game-end',
+                winnerId: winnerPlayer.id,
+              });
+              
+              toast(`${winnerPlayer.name} Wins! 🏆`, {
+                description: 'Next game starts in 5 seconds...',
+                duration: 5000,
               });
             }
+            startCountdown();
+            return;
+          }
+
+          // Update all players (host simulates all)
+          playersRef.current.forEach((player) => {
+            if (!player.alive) return;
+
+            // Apply controls for each player
+            // For clients, check stored input state; for host, check local inputs
+            if (player.id === myPlayerIdRef.current) {
+              // Host's own player - use local inputs
+              if (player.controlType === 'keyboard') {
+                if (keysRef.current[player.turnLeft]) {
+                  player.angle -= TURN_SPEED;
+                }
+                if (keysRef.current[player.turnRight]) {
+                  player.angle += TURN_SPEED;
+                }
+              } else if (player.controlType === 'mouse') {
+                if (mouseButtonsRef.current.left) {
+                  player.angle -= TURN_SPEED;
+                }
+                if (mouseButtonsRef.current.right) {
+                  player.angle += TURN_SPEED;
+                }
+              } else if (player.controlType === 'touch') {
+                if (player.touchLeftActive) {
+                  player.angle -= TURN_SPEED;
+                }
+                if (player.touchRightActive) {
+                  player.angle += TURN_SPEED;
+                }
+              }
+            } else {
+              // Client player - use stored input state
+              const clientInput = clientInputsRef.current.get(player.id);
+              if (clientInput) {
+                if (clientInput.turnLeft && !clientInput.turnRight) {
+                  player.angle -= TURN_SPEED;
+                } else if (clientInput.turnRight && !clientInput.turnLeft) {
+                  player.angle += TURN_SPEED;
+                }
+              }
+            }
+
+            // Update position
+            player.x += Math.cos(player.angle) * config.speed;
+            player.y += Math.sin(player.angle) * config.speed;
+            player.x = wrapPosition(player.x, gameWorldRef.current.width);
+            player.y = wrapPosition(player.y, gameWorldRef.current.height);
+
+            // Handle gaps
+            if (now >= player.nextGapTime && !player.gapActive) {
+              player.gapActive = true;
+              player.gapEndTime = now + GAP_LENGTH * (1000 / 60);
+              player.nextGapTime = now + config.gapInterval + Math.random() * config.gapInterval;
+            }
+
+            if (player.gapActive && now >= player.gapEndTime) {
+              player.gapActive = false;
+            }
+
+            // Add trail point
+            player.trail.push({
+              x: player.x,
+              y: player.y,
+              isGap: player.gapActive,
+            });
+
+            // Check collision
+            if (!player.gapActive) {
+              if (checkCollision(player.x, player.y, playersRef.current, player.id)) {
+                audioManagerRef.current?.playCrash();
+                player.alive = false;
+                player.trail.push({
+                  x: player.x,
+                  y: player.y,
+                  isGap: false,
+                });
+              }
+            }
+          });
+
+          // Broadcast state to clients (throttled to ~30 updates/sec)
+          if (now - lastStateUpdateRef.current > 33) {
+            lastStateUpdateRef.current = now;
+            const gameState: GameState = {
+              players: playersRef.current,
+              timestamp: now,
+            };
+            networkManager.send({
+              type: 'state',
+              state: gameState,
+            });
+          }
+        } else {
+          // CLIENT: Send inputs to host, render received state
+          const myPlayer = playersRef.current[myPlayerIdRef.current];
+          if (myPlayer && myPlayer.alive) {
+            let turnLeft = false;
+            let turnRight = false;
+
+            // Check my controls
+            if (myPlayer.controlType === 'keyboard') {
+              turnLeft = keysRef.current[myPlayer.turnLeft] || false;
+              turnRight = keysRef.current[myPlayer.turnRight] || false;
+            } else if (myPlayer.controlType === 'mouse') {
+              turnLeft = mouseButtonsRef.current.left;
+              turnRight = mouseButtonsRef.current.right;
+            } else if (myPlayer.controlType === 'touch') {
+              turnLeft = myPlayer.touchLeftActive || false;
+              turnRight = myPlayer.touchRightActive || false;
+            }
+
+            // Send input every frame to ensure host has current state
+            networkManager.send({
+              type: 'input',
+              playerId: myPlayerIdRef.current,
+              turnLeft,
+              turnRight,
+              timestamp: now,
+            });
           }
         }
-      });
+      } else {
+        // LOCAL MODE: Original game loop
+        const alivePlayers = playersRef.current.filter((p) => p.alive);
+
+        if (config.playerCount > 1 && alivePlayers.length <= 1) {
+          audioManagerRef.current?.stopHeartbeat();
+          
+          if (alivePlayers.length === 1) {
+            const winnerPlayer = alivePlayers[0];
+            setWinner(winnerPlayer.id);
+            onGameEnd(winnerPlayer.id);
+            toast(`${winnerPlayer.name} Wins! 🏆`, {
+              description: 'Next game starts in 5 seconds...',
+              duration: 5000,
+            });
+          }
+          startCountdown();
+          return;
+        }
+
+        playersRef.current.forEach((player) => {
+          if (!player.alive) return;
+
+          if (player.controlType === 'keyboard') {
+            if (keysRef.current[player.turnLeft]) {
+              player.angle -= TURN_SPEED;
+            }
+            if (keysRef.current[player.turnRight]) {
+              player.angle += TURN_SPEED;
+            }
+          } else if (player.controlType === 'mouse') {
+            if (mouseButtonsRef.current.left) {
+              player.angle -= TURN_SPEED;
+            }
+            if (mouseButtonsRef.current.right) {
+              player.angle += TURN_SPEED;
+            }
+          } else if (player.controlType === 'touch') {
+            if (player.touchLeftActive) {
+              player.angle -= TURN_SPEED;
+            }
+            if (player.touchRightActive) {
+              player.angle += TURN_SPEED;
+            }
+          }
+
+          player.x += Math.cos(player.angle) * config.speed;
+          player.y += Math.sin(player.angle) * config.speed;
+
+          player.x = wrapPosition(player.x, canvas.width);
+          player.y = wrapPosition(player.y, canvas.height);
+
+          if (now >= player.nextGapTime && !player.gapActive) {
+            player.gapActive = true;
+            player.gapEndTime = now + GAP_LENGTH * (1000 / 60);
+            player.nextGapTime = now + config.gapInterval + Math.random() * config.gapInterval;
+          }
+
+          if (player.gapActive && now >= player.gapEndTime) {
+            player.gapActive = false;
+          }
+
+          player.trail.push({
+            x: player.x,
+            y: player.y,
+            isGap: player.gapActive,
+          });
+
+          if (!player.gapActive) {
+            if (checkCollision(player.x, player.y, playersRef.current, player.id)) {
+              audioManagerRef.current?.playCrash();
+              
+              if (config.playerCount === 1) {
+                player.trail = [];
+                const spawn = { x: SPAWN_PADDING, y: canvas.height / 2, angle: 0 };
+                player.x = spawn.x;
+                player.y = spawn.y;
+                player.angle = spawn.angle;
+                player.alive = true;
+                player.nextGapTime = now + Math.random() * config.gapInterval;
+                player.gapActive = false;
+              } else {
+                player.alive = false;
+                player.trail.push({
+                  x: player.x,
+                  y: player.y,
+                  isGap: false,
+                });
+              }
+            }
+          }
+        });
+      }
 
       // Update heartbeat based on distance between alive snakes
       audioManagerRef.current?.updateHeartbeat(playersRef.current);
 
+      // Clear canvas background
       ctx.fillStyle = 'oklch(0.10 0.05 250)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // For online mode, scale maintaining aspect ratio and center the game
+      if (gameMode === 'online') {
+        const scaleX = canvas.width / gameWorldRef.current.width;
+        const scaleY = canvas.height / gameWorldRef.current.height;
+        
+        // Use the minimum scale to maintain aspect ratio and fit everything on screen
+        const scale = Math.min(scaleX, scaleY);
+        
+        // Center the game world on the canvas
+        const offsetX = (canvas.width - gameWorldRef.current.width * scale) / 2;
+        const offsetY = (canvas.height - gameWorldRef.current.height * scale) / 2;
+        
+        ctx.save();
+        ctx.translate(offsetX, offsetY);
+        ctx.scale(scale, scale);
+        
+        // Draw game world background with proper aspect ratio
+        ctx.fillStyle = 'oklch(0.10 0.05 250)';
+        ctx.fillRect(0, 0, gameWorldRef.current.width, gameWorldRef.current.height);
+        
+        // Draw border around the arena
+        ctx.strokeStyle = 'oklch(0.30 0.05 250)'; // Slightly lighter than background
+        ctx.lineWidth = 2 / scale; // Adjust line width for scaling
+        ctx.strokeRect(0, 0, gameWorldRef.current.width, gameWorldRef.current.height);
+      }
 
       playersRef.current.forEach((player) => {
         ctx.strokeStyle = player.color;
@@ -397,7 +801,12 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
         }
       });
 
-      // Draw touch controls for mobile
+      // Restore context for online mode scaling
+      if (gameMode === 'online') {
+        ctx.restore();
+      }
+
+      // Draw touch controls for mobile (always in screen coordinates, not scaled)
       if (touchEnabled) {
         touchControlsRef.current.forEach((control) => {
           const player = playersRef.current[control.playerId];
@@ -427,9 +836,36 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
     gameLoopRef.current = gameLoop;
     animationRef.current = requestAnimationFrame(gameLoop);
 
+    // Handle window resize
+    const handleResize = () => {
+      if (canvas) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // Update touch control positions for the new screen size (if they exist)
+        if (touchControlsRef.current.length > 0) {
+          const verticalPosition = canvas.height - 100;
+          const horizontalSpacing = 150;
+          
+          touchControlsRef.current.forEach((control) => {
+            if (control.side === 'left') {
+              control.x = canvas.width / 2 - horizontalSpacing;
+              control.y = verticalPosition;
+            } else {
+              control.x = canvas.width / 2 + horizontalSpacing;
+              control.y = verticalPosition;
+            }
+          });
+        }
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('resize', handleResize);
       canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mouseup', handleMouseUp);
       canvas.removeEventListener('contextmenu', handleContextMenu);
@@ -439,6 +875,10 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
       canvas.removeEventListener('touchmove', handleTouchMove);
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+      }
+      // Clean up countdown timer
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
       }
       // Clean up audio manager
       audioManagerRef.current?.destroy();
@@ -450,12 +890,44 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
     if (!showRestart) return;
 
     const handleGameEndKeys = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        startNewGame();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onBackToMenu();
+      // If countdown is active, Enter skips it, Esc cancels and goes to menu
+      if (countdown !== null && countdown > 0) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          // Clear countdown and start immediately
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          setCountdown(null);
+          
+          // If online mode and host, send restart to clients
+          if (gameMode === 'online' && isHost && networkManager) {
+            networkManager.send({
+              type: 'restart-game',
+            });
+          }
+          
+          startNewGame();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          // Clear countdown and go to menu
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          setCountdown(null);
+          onBackToMenu();
+        }
+      } else {
+        // No countdown active, normal behavior
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          startNewGame();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onBackToMenu();
+        }
       }
     };
 
@@ -463,31 +935,73 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu }: GameCanvasProps)
     return () => {
       window.removeEventListener('keydown', handleGameEndKeys);
     };
-  }, [showRestart]);
+  }, [showRestart, countdown]);
 
   return (
     <>
-      <canvas ref={canvasRef} className="block" />
+      <canvas 
+        ref={canvasRef} 
+        className="block w-full h-full fixed top-0 left-0" 
+        style={{ touchAction: 'none' }}
+      />
+      
+      {/* Back to menu button */}
+      <Button
+        onClick={onBackToMenu}
+        variant="ghost"
+        size="icon"
+        className="fixed top-4 left-4 z-10 bg-transparent border-transparent backdrop-blur-none shadow-none hover:bg-background/10 opacity-70 hover:opacity-100 transition-opacity"
+      >
+        <X size={32} weight="bold" />
+      </Button>
+      
+      {/* Connection indicator for online mode */}
+      {gameMode === 'online' && networkManager && (
+        <div className="fixed top-4 right-4 z-10 pointer-events-none">
+          <div className="bg-background/80 backdrop-blur-sm border rounded-lg px-4 py-2 shadow-lg">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="font-medium">
+                {isHost ? 'Host' : `Player ${myPlayerId + 1}`}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {showRestart && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-4 items-center">
-            <Button
-              onClick={startNewGame}
-              size="lg"
-              className="text-lg h-14 px-8 min-w-[240px]"
-            >
-              Play Again
-              <span className="ml-3 text-sm opacity-70">(Enter)</span>
-            </Button>
-            <Button
-              onClick={onBackToMenu}
-              variant="outline"
-              size="lg"
-              className="text-lg h-14 px-8 min-w-[240px]"
-            >
-              Main Menu
-              <span className="ml-3 text-sm opacity-70">(Esc)</span>
-            </Button>
+            {countdown !== null && countdown > 0 ? (
+              <div className="text-center">
+                <div className="text-8xl font-bold mb-4 animate-pulse">
+                  {countdown}
+                </div>
+                <div className="text-2xl text-muted-foreground">
+                  Next game starting...
+                </div>
+              </div>
+            ) : (
+              <>
+                <Button
+                  onClick={startNewGame}
+                  size="lg"
+                  className="text-lg h-14 px-8 min-w-[240px]"
+                >
+                  {gameMode === 'online' ? 'Back to Lobby' : 'Play Again'}
+                  <span className="ml-3 text-sm opacity-70">(Enter)</span>
+                </Button>
+                <Button
+                  onClick={onBackToMenu}
+                  variant="outline"
+                  size="lg"
+                  className="text-lg h-14 px-8 min-w-[240px]"
+                >
+                  Main Menu
+                  <span className="ml-3 text-sm opacity-70">(Esc)</span>
+                </Button>
+              </>
+            )}
           </div>
         </div>
       )}

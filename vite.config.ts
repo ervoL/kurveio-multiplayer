@@ -11,6 +11,10 @@ const projectRoot = process.env.PROJECT_ROOT || import.meta.dirname
 // https://vite.dev/config/
 export default defineConfig({
   base: '/kurveio-multiplayer/',
+  server: {
+    host: true, // Expose to local network
+    port: 5000,
+  },
   plugins: [
     react(),
     tailwindcss(),

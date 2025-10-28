@@ -4,6 +4,7 @@ import { Trophy } from '@phosphor-icons/react';
 interface ScoreboardProps {
   scores: number[];
   playerCount: number;
+  players?: { peerId: string; playerId: number; playerName: string }[];
 }
 
 const playerColors = [
@@ -13,8 +14,13 @@ const playerColors = [
   'oklch(0.75 0.18 70)',
 ];
 
-export function Scoreboard({ scores, playerCount }: ScoreboardProps) {
+export function Scoreboard({ scores, playerCount, players = [] }: ScoreboardProps) {
   const maxScore = Math.max(...scores);
+
+  const getPlayerName = (index: number) => {
+    const player = players.find(p => p.playerId === index);
+    return player ? player.playerName : `Player ${index + 1}`;
+  };
 
   return (
     <Card className="fixed top-4 right-4 p-4 min-w-[200px] bg-transparent border-transparent backdrop-blur-none shadow-none pointer-events-none">
@@ -33,7 +39,7 @@ export function Scoreboard({ scores, playerCount }: ScoreboardProps) {
                 className="w-3 h-3 rounded-full"
                 style={{ backgroundColor: playerColors[i] }}
               />
-              <span className="text-sm">Player {i + 1}</span>
+              <span className="text-sm">{getPlayerName(i)}</span>
             </div>
             <div className="flex items-center gap-1">
               <span className="text-lg font-bold tabular-nums">{scores[i]}</span>

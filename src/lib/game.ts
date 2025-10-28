@@ -72,9 +72,31 @@ export const TRAIL_WIDTH = 3;
 export const GAP_LENGTH = 15;
 export const SPAWN_PADDING = 100;
 
-export function createPlayer(id: number, canvasWidth: number, canvasHeight: number): Player {
-  const isMobile = isTouchDevice();
-  const controls = PLAYER_CONTROLS[id];
+export function createPlayer(
+  id: number, 
+  canvasWidth: number, 
+  canvasHeight: number, 
+  name?: string,
+  gameMode: 'local' | 'online' = 'local',
+  controlType?: 'keyboard' | 'mouse' | 'touch'
+): Player {
+  // For online mode, use the specified controlType or default to keyboard
+  // For local mode, check if device is mobile and override, or use different controls per player
+  let finalControlType: 'keyboard' | 'mouse' | 'touch';
+  let controls: { turnLeft: string; turnRight: string; controlType: 'keyboard' | 'mouse' | 'touch' };
+  
+  if (gameMode === 'online') {
+    finalControlType = controlType || 'keyboard';
+    controls = { turnLeft: 'ArrowLeft', turnRight: 'ArrowRight', controlType: finalControlType };
+  } else {
+    // Local mode
+    const isMobile = isTouchDevice();
+    finalControlType = isMobile ? 'touch' : PLAYER_CONTROLS[id].controlType;
+    controls = isMobile 
+      ? { turnLeft: 'touch-left', turnRight: 'touch-right', controlType: 'touch' as const }
+      : PLAYER_CONTROLS[id];
+  }
+    
   const spawnPositions = [
     { x: SPAWN_PADDING, y: canvasHeight / 2, angle: 0 },
     { x: canvasWidth - SPAWN_PADDING, y: canvasHeight / 2, angle: Math.PI },
@@ -86,6 +108,7 @@ export function createPlayer(id: number, canvasWidth: number, canvasHeight: numb
   
   return {
     id,
+    name: name || `Player ${id + 1}`,
     x: spawn.x,
     y: spawn.y,
     angle: spawn.angle,
@@ -94,7 +117,7 @@ export function createPlayer(id: number, canvasWidth: number, canvasHeight: numb
     trail: [],
     turnLeft: controls.turnLeft,
     turnRight: controls.turnRight,
-    controlType: isMobile ? 'touch' : controls.controlType,
+    controlType: finalControlType,
     nextGapTime: 0,
     gapActive: false,
     gapEndTime: 0,
