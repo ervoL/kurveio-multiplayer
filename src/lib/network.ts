@@ -1,6 +1,24 @@
 import Peer, { DataConnection } from 'peerjs';
 import type { NetworkMessage, NetworkPlayer } from './types';
 
+// PeerJS server configuration
+// For local testing: Set VITE_USE_LOCAL_PEERSERVER=true in .env.local
+const USE_LOCAL_SERVER = import.meta.env.VITE_USE_LOCAL_PEERSERVER === 'true';
+
+const PEER_CONFIG = USE_LOCAL_SERVER 
+  ? {
+      host: 'localhost',
+      port: 9000,
+      path: '/myapp',
+      secure: false,
+    }
+  : {
+      host: '0.peerjs.com',
+      port: 443,
+      path: '/',
+      secure: true,
+    };
+
 export class NetworkManager {
   private peer: Peer | null = null;
   private connections: Map<string, DataConnection> = new Map();
@@ -12,7 +30,9 @@ export class NetworkManager {
   public myPeerId: string = '';
   public myPlayerName: string = '';
   
-  constructor() {}
+  constructor() {
+    console.log('PeerJS Config:', USE_LOCAL_SERVER ? 'Local Server (localhost:9000)' : 'Cloud Server (0.peerjs.com)');
+  }
 
   // Initialize as host
   async createRoom(playerName: string): Promise<string> {
@@ -24,12 +44,20 @@ export class NetworkManager {
       const roomCode = this.generateRoomCode();
       this.peer = new Peer(roomCode, {
         debug: 2,
+        ...PEER_CONFIG,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+          ]
+        }
       });
 
       this.peer.on('open', (id) => {
         this.myPeerId = id;
         this.roomId = id;
         console.log('Room created with ID:', id);
+        console.log('Waiting for players to connect...');
         resolve(id);
       });
 
@@ -53,36 +81,47 @@ export class NetworkManager {
       
       this.peer = new Peer({
         debug: 2,
+        ...PEER_CONFIG,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+          ]
+        }
       });
 
       this.peer.on('open', (id) => {
         this.myPeerId = id;
         console.log('My peer ID:', id);
+        console.log('Attempting to connect to room:', roomId);
         
-        // Connect to host
-        const conn = this.peer!.connect(roomId, {
-          reliable: true,
-        });
-
-        conn.on('open', () => {
-          console.log('Connected to host');
-          this.hostConnection = conn;
-          this.setupConnectionHandlers(conn);
-          
-          // Send join message
-          this.send({
-            type: 'player-join',
-            playerName: this.myPlayerName,
-            peerId: this.myPeerId,
+        // Add a small delay to ensure the host is ready
+        setTimeout(() => {
+          // Connect to host
+          const conn = this.peer!.connect(roomId, {
+            reliable: true,
           });
-          
-          resolve();
-        });
 
-        conn.on('error', (error) => {
-          console.error('Connection error:', error);
-          reject(error);
-        });
+          conn.on('open', () => {
+            console.log('Connected to host');
+            this.hostConnection = conn;
+            this.setupConnectionHandlers(conn);
+            
+            // Send join message
+            this.send({
+              type: 'player-join',
+              playerName: this.myPlayerName,
+              peerId: this.myPeerId,
+            });
+            
+            resolve();
+          });
+
+          conn.on('error', (error) => {
+            console.error('Connection error:', error);
+            reject(error);
+          });
+        }, 500);
       });
 
       this.peer.on('error', (error) => {

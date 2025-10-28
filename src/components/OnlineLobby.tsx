@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,17 +17,20 @@ interface OnlineLobbyProps {
     myPlayerId: number
   ) => void;
   onBack: () => void;
+  networkManager?: NetworkManager | null;
+  isHost?: boolean;
+  myPlayerId?: number;
 }
 
-export function OnlineLobby({ onStartGame, onBack }: OnlineLobbyProps) {
+export function OnlineLobby({ onStartGame, onBack, networkManager: existingNetworkManager, isHost: existingIsHost, myPlayerId: existingMyPlayerId }: OnlineLobbyProps) {
   const [tab, setTab] = useState<'create' | 'join'>('create');
   const [playerName, setPlayerName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [myRoomCode, setMyRoomCode] = useState('');
-  const [networkManager] = useState(() => new NetworkManager());
+  const [networkManager] = useState(() => existingNetworkManager || new NetworkManager());
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isInLobby, setIsInLobby] = useState(false);
-  const [isHost, setIsHost] = useState(false);
+  const [isInLobby, setIsInLobby] = useState(!!existingNetworkManager);
+  const [isHost, setIsHost] = useState(existingIsHost || false);
   const [players, setPlayers] = useState<NetworkPlayer[]>([]);
   const [myReady, setMyReady] = useState(false);
   const [gameConfig, setGameConfig] = useState<GameConfig>({
@@ -36,21 +39,67 @@ export function OnlineLobby({ onStartGame, onBack }: OnlineLobbyProps) {
     gapInterval: 3000,
   });
 
+  // Track if handlers are already set up
+  const handlersSetup = useRef(false);
+  // Track if we're transitioning to game (don't disconnect)
+  const isTransitioningToGame = useRef(false);
+
+  // Effect to handle returning from game (reset ready states)
   useEffect(() => {
+    if (existingNetworkManager && isInLobby) {
+      // Reset ready states when returning to lobby
+      setMyReady(false);
+      setPlayers(prev => prev.map(p => ({ ...p, ready: false })));
+      
+      // Broadcast that we're back and not ready
+      if (networkManager) {
+        networkManager.send({
+          type: 'player-ready',
+          peerId: networkManager.myPeerId,
+          ready: false,
+        });
+      }
+    }
+  }, [isInLobby, existingNetworkManager]);
+
+  useEffect(() => {
+    // Only set up handlers once
+    if (handlersSetup.current) return;
+    handlersSetup.current = true;
+
     // Set up network message handlers
     networkManager.on('player-join', (data, peerId) => {
-      if (isHost) {
-        console.log('Player joined:', data);
-        setPlayers((prev) => [
+      console.log('Player joined:', data);
+      
+      // Add the new player to the list
+      setPlayers((prev) => {
+        const updatedPlayers = [
           ...prev,
           {
             peerId: data.peerId,
             playerName: data.playerName,
             ready: false,
           },
-        ]);
-        toast.success(`${data.playerName} joined the room`);
-      }
+        ];
+        
+        // Host sends current player list to the new player
+        setTimeout(() => {
+          networkManager.send({
+            type: 'player-list',
+            players: updatedPlayers,
+          }, data.peerId);
+        }, 100);
+        
+        return updatedPlayers;
+      });
+      
+      toast.success(`${data.playerName} joined the room`);
+    });
+
+    networkManager.on('player-list', (data) => {
+      // Client receives the full player list from host
+      console.log('Received player list:', data.players);
+      setPlayers(data.players);
     });
 
     networkManager.on('player-ready', (data) => {
@@ -62,31 +111,38 @@ export function OnlineLobby({ onStartGame, onBack }: OnlineLobbyProps) {
     });
 
     networkManager.on('start-game', (data) => {
-      if (!isHost) {
-        // Client receives start game message
-        const myAssignment = data.playerAssignments.find(
-          (a) => a.peerId === networkManager.myPeerId
-        );
-        if (myAssignment) {
-          onStartGame(data.config, networkManager, false, myAssignment.playerId);
-        }
+      // Client receives start game message
+      const myAssignment = data.playerAssignments.find(
+        (a) => a.peerId === networkManager.myPeerId
+      );
+      if (myAssignment) {
+        // Mark that we're transitioning to game (don't disconnect)
+        isTransitioningToGame.current = true;
+        onStartGame(data.config, networkManager, false, myAssignment.playerId);
       }
     });
 
     networkManager.on('disconnect', (data) => {
       const disconnectedPeer = data.peerId;
-      setPlayers((prev) => prev.filter((p) => p.peerId !== disconnectedPeer));
-      
-      const playerName = players.find((p) => p.peerId === disconnectedPeer)?.playerName;
-      if (playerName) {
-        toast.error(`${playerName} disconnected`);
-      }
+      setPlayers((prev) => {
+        const disconnectedPlayer = prev.find((p) => p.peerId === disconnectedPeer);
+        if (disconnectedPlayer) {
+          toast.error(`${disconnectedPlayer.playerName} disconnected`);
+        }
+        return prev.filter((p) => p.peerId !== disconnectedPeer);
+      });
     });
 
+    // Only disconnect on component unmount if NOT transitioning to game
     return () => {
-      networkManager.disconnect();
+      if (!isTransitioningToGame.current) {
+        console.log('OnlineLobby unmounting - disconnecting network');
+        networkManager.disconnect();
+      } else {
+        console.log('OnlineLobby unmounting - keeping network connection for game');
+      }
     };
-  }, [isHost, networkManager, onStartGame, players]);
+  }, [networkManager, onStartGame]);
 
   const handleCreateRoom = async () => {
     if (!playerName.trim()) {
@@ -204,6 +260,9 @@ export function OnlineLobby({ onStartGame, onBack }: OnlineLobbyProps) {
     );
     const hostPlayerId = hostAssignment ? hostAssignment.playerId : 0;
 
+    // Mark that we're transitioning to game (don't disconnect)
+    isTransitioningToGame.current = true;
+    
     // Start game for host
     onStartGame(gameConfig, networkManager, true, hostPlayerId);
   };

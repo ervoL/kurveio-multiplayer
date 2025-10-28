@@ -81,6 +81,11 @@ export interface PlayerReadyMessage {
   ready: boolean;
 }
 
+export interface PlayerListMessage {
+  type: 'player-list';
+  players: NetworkPlayer[];
+}
+
 export interface StartGameMessage {
   type: 'start-game';
   config: GameConfig;
@@ -92,10 +97,26 @@ export interface GameEndMessage {
   winnerId?: number;
 }
 
+export interface RestartGameMessage {
+  type: 'restart-game';
+}
+
+export interface BackToLobbyMessage {
+  type: 'back-to-lobby';
+}
+
+export interface StartCountdownMessage {
+  type: 'start-countdown';
+}
+
 export type NetworkMessage =
   | InputMessage
   | StateUpdateMessage
   | PlayerJoinMessage
   | PlayerReadyMessage
+  | PlayerListMessage
   | StartGameMessage
-  | GameEndMessage;
+  | GameEndMessage
+  | RestartGameMessage
+  | BackToLobbyMessage
+  | StartCountdownMessage;

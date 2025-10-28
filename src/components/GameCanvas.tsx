@@ -20,13 +20,14 @@ interface GameCanvasProps {
   config: GameConfig;
   onGameEnd: (winnerId?: number) => void;
   onBackToMenu: () => void;
+  onBackToLobby?: () => void;
   networkManager?: NetworkManager | null;
   isHost?: boolean;
   gameMode: GameMode;
   myPlayerId?: number;
 }
 
-export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, isHost, gameMode, myPlayerId = 0 }: GameCanvasProps) {
+export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, networkManager, isHost, gameMode, myPlayerId = 0 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const playersRef = useRef<Player[]>([]);
   const keysRef = useRef<Keys>({});
@@ -34,6 +35,7 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
   const animationRef = useRef<number>(0);
   const [showRestart, setShowRestart] = useState(false);
   const [winner, setWinner] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const gameLoopRef = useRef<(() => void) | null>(null);
   const touchControlsRef = useRef<TouchControl[]>([]);
   const [isMobile, setIsMobile] = useState(false);
@@ -41,21 +43,75 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
   const myPlayerIdRef = useRef<number>(0);
   const lastStateUpdateRef = useRef<number>(0);
   const inputBufferRef = useRef({ turnLeft: false, turnRight: false });
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Store client input states for continuous application on host
+  const clientInputsRef = useRef<Map<number, { turnLeft: boolean; turnRight: boolean }>>(new Map());
+  
+  // Fixed game world size for online multiplayer (independent of screen size)
+  const gameWorldRef = useRef({ width: 1920, height: 1080 });
+
+  const startCountdown = (sendMessage: boolean = true) => {
+    setCountdown(5);
+    setShowRestart(true);
+    
+    // Only host sends network messages, and only if sendMessage is true
+    const shouldSendMessages = gameMode === 'online' && isHost && networkManager && sendMessage;
+    
+    // If online mode and host, send countdown start to clients
+    if (shouldSendMessages) {
+      // Use setTimeout to ensure game-end message is processed first
+      setTimeout(() => {
+        networkManager!.send({
+          type: 'start-countdown',
+        });
+      }, 50);
+    }
+
+    let timeLeft = 5;
+    countdownTimerRef.current = setInterval(() => {
+      timeLeft--;
+      setCountdown(timeLeft);
+      
+      if (timeLeft <= 0) {
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+        
+        // If online mode and host, send restart to clients
+        if (shouldSendMessages) {
+          networkManager!.send({
+            type: 'restart-game',
+          });
+        }
+        
+        startNewGame();
+      }
+    }, 1000);
+  };
 
   const startNewGame = () => {
+    // Reset countdown and restart states
+    setCountdown(null);
     setShowRestart(false);
     setWinner(null);
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // For online mode, use fixed game world size; for local mode, use canvas size
+    const worldWidth = gameMode === 'online' ? gameWorldRef.current.width : canvas.width;
+    const worldHeight = gameMode === 'online' ? gameWorldRef.current.height : canvas.height;
+
     playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
-      createPlayer(i, canvas.width, canvas.height)
+      createPlayer(i, worldWidth, worldHeight)
     );
 
-    // Reinitialize touch controls
+    // Reinitialize touch controls (always use canvas size for UI elements)
     if (isMobile) {
       const controlSize = 60;
       touchControlsRef.current = [];
@@ -115,8 +171,12 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
       audioManagerRef.current = new AudioManager();
     }
 
+    // For online mode, use fixed game world size; for local mode, use canvas size
+    const worldWidth = gameMode === 'online' ? gameWorldRef.current.width : canvas.width;
+    const worldHeight = gameMode === 'online' ? gameWorldRef.current.height : canvas.height;
+
     playersRef.current = Array.from({ length: config.playerCount }, (_, i) =>
-      createPlayer(i, canvas.width, canvas.height)
+      createPlayer(i, worldWidth, worldHeight)
     );
 
     // Initialize touch controls for mobile
@@ -158,15 +218,11 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
         // HOST: Handle input from clients
         networkManager.on('input', (data, peerId) => {
           const inputData = data as { playerId: number; turnLeft: boolean; turnRight: boolean };
-          const player = playersRef.current[inputData.playerId];
-          if (player && player.alive) {
-            // Apply client input to their player
-            if (inputData.turnLeft && !inputData.turnRight) {
-              player.angle -= TURN_SPEED;
-            } else if (inputData.turnRight && !inputData.turnLeft) {
-              player.angle += TURN_SPEED;
-            }
-          }
+          // Store the client's input state for continuous application
+          clientInputsRef.current.set(inputData.playerId, {
+            turnLeft: inputData.turnLeft,
+            turnRight: inputData.turnRight,
+          });
         });
       } else {
         // CLIENT: Set my player ID from props
@@ -187,12 +243,33 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
               setWinner(winnerPlayer.id);
               onGameEnd(winnerPlayer.id);
               toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
-                description: 'Congratulations on your victory!',
+                description: 'Next game starts in 5 seconds...',
                 duration: 5000,
               });
             }
           }
+          // Don't start countdown here - wait for start-countdown message
           setShowRestart(true);
+        });
+
+        // Handle restart game from host
+        networkManager.on('restart-game', () => {
+          console.log('Client: Received restart-game message from host');
+          startNewGame();
+        });
+
+        // Handle countdown start from host
+        networkManager.on('start-countdown', () => {
+          console.log('Client: Received start-countdown message from host');
+          startCountdown(false); // Don't send message on client
+        });
+
+        // Handle back to lobby from host
+        networkManager.on('back-to-lobby', () => {
+          console.log('Client: Received back-to-lobby message from host');
+          if (onBackToLobby) {
+            onBackToLobby();
+          }
         });
       }
     }
@@ -309,11 +386,11 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
               });
               
               toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
-                description: 'Congratulations on your victory!',
+                description: 'Next game starts in 5 seconds...',
                 duration: 5000,
               });
             }
-            setShowRestart(true);
+            startCountdown();
             return;
           }
 
@@ -322,34 +399,48 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
             if (!player.alive) return;
 
             // Apply controls for each player
-            if (player.controlType === 'keyboard') {
-              if (keysRef.current[player.turnLeft]) {
-                player.angle -= TURN_SPEED;
+            // For clients, check stored input state; for host, check local inputs
+            if (player.id === myPlayerIdRef.current) {
+              // Host's own player - use local inputs
+              if (player.controlType === 'keyboard') {
+                if (keysRef.current[player.turnLeft]) {
+                  player.angle -= TURN_SPEED;
+                }
+                if (keysRef.current[player.turnRight]) {
+                  player.angle += TURN_SPEED;
+                }
+              } else if (player.controlType === 'mouse') {
+                if (mouseButtonsRef.current.left) {
+                  player.angle -= TURN_SPEED;
+                }
+                if (mouseButtonsRef.current.right) {
+                  player.angle += TURN_SPEED;
+                }
+              } else if (player.controlType === 'touch') {
+                if (player.touchLeftActive) {
+                  player.angle -= TURN_SPEED;
+                }
+                if (player.touchRightActive) {
+                  player.angle += TURN_SPEED;
+                }
               }
-              if (keysRef.current[player.turnRight]) {
-                player.angle += TURN_SPEED;
-              }
-            } else if (player.controlType === 'mouse') {
-              if (mouseButtonsRef.current.left) {
-                player.angle -= TURN_SPEED;
-              }
-              if (mouseButtonsRef.current.right) {
-                player.angle += TURN_SPEED;
-              }
-            } else if (player.controlType === 'touch') {
-              if (player.touchLeftActive) {
-                player.angle -= TURN_SPEED;
-              }
-              if (player.touchRightActive) {
-                player.angle += TURN_SPEED;
+            } else {
+              // Client player - use stored input state
+              const clientInput = clientInputsRef.current.get(player.id);
+              if (clientInput) {
+                if (clientInput.turnLeft && !clientInput.turnRight) {
+                  player.angle -= TURN_SPEED;
+                } else if (clientInput.turnRight && !clientInput.turnLeft) {
+                  player.angle += TURN_SPEED;
+                }
               }
             }
 
             // Update position
             player.x += Math.cos(player.angle) * config.speed;
             player.y += Math.sin(player.angle) * config.speed;
-            player.x = wrapPosition(player.x, canvas.width);
-            player.y = wrapPosition(player.y, canvas.height);
+            player.x = wrapPosition(player.x, gameWorldRef.current.width);
+            player.y = wrapPosition(player.y, gameWorldRef.current.height);
 
             // Handle gaps
             if (now >= player.nextGapTime && !player.gapActive) {
@@ -414,17 +505,14 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
               turnRight = myPlayer.touchRightActive || false;
             }
 
-            // Send input if changed
-            if (turnLeft !== inputBufferRef.current.turnLeft || turnRight !== inputBufferRef.current.turnRight) {
-              inputBufferRef.current = { turnLeft, turnRight };
-              networkManager.send({
-                type: 'input',
-                playerId: myPlayerIdRef.current,
-                turnLeft,
-                turnRight,
-                timestamp: now,
-              });
-            }
+            // Send input every frame to ensure host has current state
+            networkManager.send({
+              type: 'input',
+              playerId: myPlayerIdRef.current,
+              turnLeft,
+              turnRight,
+              timestamp: now,
+            });
           }
         }
       } else {
@@ -439,11 +527,11 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
             setWinner(winnerPlayer.id);
             onGameEnd(winnerPlayer.id);
             toast(`Player ${winnerPlayer.id + 1} Wins! 🏆`, {
-              description: 'Congratulations on your victory!',
+              description: 'Next game starts in 5 seconds...',
               duration: 5000,
             });
           }
-          setShowRestart(true);
+          startCountdown();
           return;
         }
 
@@ -524,8 +612,18 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
       // Update heartbeat based on distance between alive snakes
       audioManagerRef.current?.updateHeartbeat(playersRef.current);
 
+      // Clear canvas background
       ctx.fillStyle = 'oklch(0.10 0.05 250)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // For online mode, scale the rendering to fill the entire canvas
+      if (gameMode === 'online') {
+        const scaleX = canvas.width / gameWorldRef.current.width;
+        const scaleY = canvas.height / gameWorldRef.current.height;
+        
+        ctx.save();
+        ctx.scale(scaleX, scaleY);
+      }
 
       playersRef.current.forEach((player) => {
         ctx.strokeStyle = player.color;
@@ -582,7 +680,12 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
         }
       });
 
-      // Draw touch controls for mobile
+      // Restore context for online mode scaling
+      if (gameMode === 'online') {
+        ctx.restore();
+      }
+
+      // Draw touch controls for mobile (always in screen coordinates, not scaled)
       if (touchEnabled) {
         touchControlsRef.current.forEach((control) => {
           const player = playersRef.current[control.playerId];
@@ -612,9 +715,20 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
     gameLoopRef.current = gameLoop;
     animationRef.current = requestAnimationFrame(gameLoop);
 
+    // Handle window resize
+    const handleResize = () => {
+      if (canvas) {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('resize', handleResize);
       canvas.removeEventListener('mousedown', handleMouseDown);
       canvas.removeEventListener('mouseup', handleMouseUp);
       canvas.removeEventListener('contextmenu', handleContextMenu);
@@ -624,6 +738,10 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
       canvas.removeEventListener('touchmove', handleTouchMove);
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+      }
+      // Clean up countdown timer
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
       }
       // Clean up audio manager
       audioManagerRef.current?.destroy();
@@ -635,12 +753,44 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
     if (!showRestart) return;
 
     const handleGameEndKeys = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        startNewGame();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onBackToMenu();
+      // If countdown is active, Enter skips it, Esc cancels and goes to menu
+      if (countdown !== null && countdown > 0) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          // Clear countdown and start immediately
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          setCountdown(null);
+          
+          // If online mode and host, send restart to clients
+          if (gameMode === 'online' && isHost && networkManager) {
+            networkManager.send({
+              type: 'restart-game',
+            });
+          }
+          
+          startNewGame();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          // Clear countdown and go to menu
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          setCountdown(null);
+          onBackToMenu();
+        }
+      } else {
+        // No countdown active, normal behavior
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          startNewGame();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          onBackToMenu();
+        }
       }
     };
 
@@ -648,11 +798,15 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
     return () => {
       window.removeEventListener('keydown', handleGameEndKeys);
     };
-  }, [showRestart]);
+  }, [showRestart, countdown]);
 
   return (
     <>
-      <canvas ref={canvasRef} className="block" />
+      <canvas 
+        ref={canvasRef} 
+        className="block w-full h-full fixed top-0 left-0" 
+        style={{ touchAction: 'none' }}
+      />
       
       {/* Connection indicator for online mode */}
       {gameMode === 'online' && networkManager && (
@@ -671,25 +825,36 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, networkManager, is
       {showRestart && (
         <div className="fixed inset-0 flex items-center justify-center pointer-events-none">
           <div className="pointer-events-auto flex flex-col gap-4 items-center">
-            {gameMode === 'local' && (
-              <Button
-                onClick={startNewGame}
-                size="lg"
-                className="text-lg h-14 px-8 min-w-[240px]"
-              >
-                Play Again
-                <span className="ml-3 text-sm opacity-70">(Enter)</span>
-              </Button>
+            {countdown !== null && countdown > 0 ? (
+              <div className="text-center">
+                <div className="text-8xl font-bold mb-4 animate-pulse">
+                  {countdown}
+                </div>
+                <div className="text-2xl text-muted-foreground">
+                  Next game starting...
+                </div>
+              </div>
+            ) : (
+              <>
+                <Button
+                  onClick={startNewGame}
+                  size="lg"
+                  className="text-lg h-14 px-8 min-w-[240px]"
+                >
+                  {gameMode === 'online' ? 'Back to Lobby' : 'Play Again'}
+                  <span className="ml-3 text-sm opacity-70">(Enter)</span>
+                </Button>
+                <Button
+                  onClick={onBackToMenu}
+                  variant="outline"
+                  size="lg"
+                  className="text-lg h-14 px-8 min-w-[240px]"
+                >
+                  Main Menu
+                  <span className="ml-3 text-sm opacity-70">(Esc)</span>
+                </Button>
+              </>
             )}
-            <Button
-              onClick={onBackToMenu}
-              variant="outline"
-              size="lg"
-              className="text-lg h-14 px-8 min-w-[240px]"
-            >
-              Main Menu
-              <span className="ml-3 text-sm opacity-70">(Esc)</span>
-            </Button>
           </div>
         </div>
       )}

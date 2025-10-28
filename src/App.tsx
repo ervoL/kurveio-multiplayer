@@ -67,6 +67,15 @@ function App() {
     setGameMode('local');
   };
 
+  const handleBackToLobby = () => {
+    // For online mode, go back to lobby instead of menu
+    if (gameMode === 'online') {
+      setAppState('online-lobby');
+    } else {
+      handleBackToMenu();
+    }
+  };
+
   const handleBackFromLobby = () => {
     setAppState('mode-select');
   };
@@ -82,7 +91,13 @@ function App() {
         <ConfigScreen onStartGame={handleStartLocalGame} onBack={handleBackFromConfig} />
       )}
       {appState === 'online-lobby' && (
-        <OnlineLobby onStartGame={handleStartOnlineGame} onBack={handleBackFromLobby} />
+        <OnlineLobby 
+          onStartGame={handleStartOnlineGame} 
+          onBack={handleBackFromLobby}
+          networkManager={networkManager}
+          isHost={isHost}
+          myPlayerId={myPlayerId}
+        />
       )}
       {appState === 'playing' && config && (
         <>
@@ -90,6 +105,7 @@ function App() {
             config={config}
             onGameEnd={handleGameEnd}
             onBackToMenu={handleBackToMenu}
+            onBackToLobby={handleBackToLobby}
             networkManager={networkManager}
             isHost={isHost}
             gameMode={gameMode}
