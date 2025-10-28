@@ -116,39 +116,66 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
       return createPlayer(i, worldWidth, worldHeight, playerName, gameMode, playerControlType);
     });
 
-    // Reinitialize touch controls - only for current player at bottom of screen
-    // Check if the CURRENT player (not the device) is using touch controls
-    const currentPlayerId = gameMode === 'online' ? myPlayerIdRef.current : 0;
-    const currentPlayer = playersRef.current[currentPlayerId];
-    const showTouchControls = currentPlayer && currentPlayer.controlType === 'touch';
+    // Reinitialize touch controls
+    // For online mode: only show for current player at bottom center
+    // For local mode: show for all players with touch controls at their respective positions
+    touchControlsRef.current = [];
     
-    if (showTouchControls) {
-      const controlSize = 60;
-      const padding = 40; // Distance from screen edges
-      const verticalPosition = canvas.height - 100; // Fixed position near bottom
-      const horizontalSpacing = 150; // Space between left and right controls
+    if (gameMode === 'online') {
+      // Online mode: single player controls at bottom center
+      const currentPlayer = playersRef.current[myPlayerIdRef.current];
+      const showTouchControls = currentPlayer && currentPlayer.controlType === 'touch';
       
-      touchControlsRef.current = [];
-      
-      touchControlsRef.current.push({
-        playerId: currentPlayerId,
-        side: 'left',
-        x: canvas.width / 2 - horizontalSpacing,
-        y: verticalPosition,
-        radius: controlSize / 2,
-        active: false,
-      });
-      
-      touchControlsRef.current.push({
-        playerId: currentPlayerId,
-        side: 'right',
-        x: canvas.width / 2 + horizontalSpacing,
-        y: verticalPosition,
-        radius: controlSize / 2,
-        active: false,
-      });
+      if (showTouchControls) {
+        const controlSize = 60;
+        const verticalPosition = canvas.height - 100;
+        const horizontalSpacing = 150;
+        
+        touchControlsRef.current.push({
+          playerId: myPlayerIdRef.current,
+          side: 'left',
+          x: canvas.width / 2 - horizontalSpacing,
+          y: verticalPosition,
+          radius: controlSize / 2,
+          active: false,
+        });
+        
+        touchControlsRef.current.push({
+          playerId: myPlayerIdRef.current,
+          side: 'right',
+          x: canvas.width / 2 + horizontalSpacing,
+          y: verticalPosition,
+          radius: controlSize / 2,
+          active: false,
+        });
+      }
     } else {
-      touchControlsRef.current = [];
+      // Local mode: controls for all players with touch control type
+      const controlSize = 60;
+      
+      playersRef.current.forEach((player, i) => {
+        if (player.controlType === 'touch') {
+          const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
+          
+          touchControlsRef.current.push({
+            playerId: i,
+            side: 'left',
+            x: positions.leftX,
+            y: positions.leftY,
+            radius: controlSize / 2,
+            active: false,
+          });
+          
+          touchControlsRef.current.push({
+            playerId: i,
+            side: 'right',
+            x: positions.rightX,
+            y: positions.rightY,
+            radius: controlSize / 2,
+            active: false,
+          });
+        }
+      });
     }
 
     const now = Date.now();
@@ -194,39 +221,66 @@ export function GameCanvas({ config, onGameEnd, onBackToMenu, onBackToLobby, net
       return createPlayer(i, worldWidth, worldHeight, playerName, gameMode, playerControlType);
     });
 
-    // Initialize touch controls for mobile - only for current player at bottom of screen
-    // Check if the CURRENT player (not the device) is using touch controls
-    const currentPlayerId = gameMode === 'online' ? myPlayerId : 0;
-    const currentPlayer = playersRef.current[currentPlayerId];
-    const showTouchControls = currentPlayer && currentPlayer.controlType === 'touch';
+    // Initialize touch controls for mobile
+    // For online mode: only show for current player at bottom center
+    // For local mode: show for all players with touch controls at their respective positions
+    touchControlsRef.current = [];
     
-    if (showTouchControls) {
-      const controlSize = 60;
-      const padding = 40; // Distance from screen edges
-      const verticalPosition = canvas.height - 100; // Fixed position near bottom
-      const horizontalSpacing = 150; // Space between left and right controls
+    if (gameMode === 'online') {
+      // Online mode: single player controls at bottom center
+      const currentPlayer = playersRef.current[myPlayerId];
+      const showTouchControls = currentPlayer && currentPlayer.controlType === 'touch';
       
-      touchControlsRef.current = [];
-      
-      touchControlsRef.current.push({
-        playerId: currentPlayerId,
-        side: 'left',
-        x: canvas.width / 2 - horizontalSpacing,
-        y: verticalPosition,
-        radius: controlSize / 2,
-        active: false,
-      });
-      
-      touchControlsRef.current.push({
-        playerId: currentPlayerId,
-        side: 'right',
-        x: canvas.width / 2 + horizontalSpacing,
-        y: verticalPosition,
-        radius: controlSize / 2,
-        active: false,
-      });
+      if (showTouchControls) {
+        const controlSize = 60;
+        const verticalPosition = canvas.height - 100;
+        const horizontalSpacing = 150;
+        
+        touchControlsRef.current.push({
+          playerId: myPlayerId,
+          side: 'left',
+          x: canvas.width / 2 - horizontalSpacing,
+          y: verticalPosition,
+          radius: controlSize / 2,
+          active: false,
+        });
+        
+        touchControlsRef.current.push({
+          playerId: myPlayerId,
+          side: 'right',
+          x: canvas.width / 2 + horizontalSpacing,
+          y: verticalPosition,
+          radius: controlSize / 2,
+          active: false,
+        });
+      }
     } else {
-      touchControlsRef.current = [];
+      // Local mode: controls for all players with touch control type
+      const controlSize = 60;
+      
+      playersRef.current.forEach((player, i) => {
+        if (player.controlType === 'touch') {
+          const positions = getTouchControlsForPlayer(i, canvas.width, canvas.height);
+          
+          touchControlsRef.current.push({
+            playerId: i,
+            side: 'left',
+            x: positions.leftX,
+            y: positions.leftY,
+            radius: controlSize / 2,
+            active: false,
+          });
+          
+          touchControlsRef.current.push({
+            playerId: i,
+            side: 'right',
+            x: positions.rightX,
+            y: positions.rightY,
+            radius: controlSize / 2,
+            active: false,
+          });
+        }
+      });
     }
 
     const now = Date.now();

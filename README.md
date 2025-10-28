@@ -13,7 +13,7 @@ This is a test project that brings back the nostalgic fun of old-school multipla
 
 ## 🎯 Features
 
-- **Local Multiplayer** - Gather your friends around one keyboard (2-4 players)
+- **Local Multiplayer** - Gather your friends around one keyboard or one touch device (2-4 players)
 - **Online Multiplayer** ⭐ NEW! - Play with friends on different devices using WebRTC P2P
   - Create or join rooms with simple room codes
   - No server costs - direct peer-to-peer connections
@@ -23,10 +23,6 @@ This is a test project that brings back the nostalgic fun of old-school multipla
 - **Modern Tech Stack** - Built with React, TypeScript, and Vite
 - **Responsive Design** - Styled with Tailwind CSS
 - **Mobile Support** - Touch controls for mobile devices
-
-## 🌐 Online Multiplayer
-
-The game now supports online multiplayer! See [MULTIPLAYER_GUIDE.md](MULTIPLAYER_GUIDE.md) for detailed instructions.
 
 **Quick Start:**
 1. Choose "Online Multiplayer" from the menu
@@ -78,10 +74,6 @@ npm run preview
 - **Player 2:** J (left) / L (right)
 - **Player 3:** ← (left) / → (right)
 - **Player 4:** Left Click (left) / Right Click (right)
-
-### Online Multiplayer
-- Controls are automatically assigned based on player order in the lobby
-- Each player uses their assigned keyboard controls
 
 ## 📝 License
 
